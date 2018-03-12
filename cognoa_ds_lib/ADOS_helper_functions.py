@@ -23,7 +23,8 @@ logger.setLevel(DEFAULT_LOG_LEVEL)
 
 
 def apply_response_transforms(row, response_transform_rules, transform_key, id_key):
-    ''' Runs on a single row, intended to be part of a pandas apply function.
+    '''
+    Runs on a single row, intended to be part of a pandas apply function.
     Transforms responses where needed, but not question itself. response_transform_rules defines
     the transformation that should be applied for each value. If no  transform is defined for a given
     value then returns original value unchanged.

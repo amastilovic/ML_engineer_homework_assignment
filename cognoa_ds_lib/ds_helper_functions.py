@@ -1099,6 +1099,7 @@ def bootstrap(dataset, number_of_tries, sampling_function_per_try, ml_function_p
     else:
         average_metrics = deep_average(metrics_per_try)
         return average_metrics
+
     return average_metrics
 
 
