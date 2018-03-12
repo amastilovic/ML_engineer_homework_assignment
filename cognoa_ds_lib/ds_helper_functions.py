@@ -1,8 +1,16 @@
+import math
+import random
+import marshal, pickle, types
+import copy as cp
+import collections
 import itertools
+
 import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plot
+import scipy.stats as stats
+import matplotlib.pyplot as plt
+
 from sklearn import preprocessing
 from sklearn import tree
 from sklearn.ensemble import ExtraTreesClassifier
@@ -10,237 +18,60 @@ from sklearn.naive_bayes import BernoulliNB
 from sklearn import metrics
 from sklearn import cross_validation
 from sklearn import feature_extraction
-import math
-import random
-import marshal, pickle, types
-import copy as cp
-import scipy.stats as stats
-import matplotlib.pyplot as plt
 from sklearn import linear_model
 from sklearn_0p18_bridge_code import *
 
+# set up logging
+DEFAULT_LOG_LEVEL = logging.INFO # or logging.DEBUG or logging.WARNING or logging.ERROR
+
+import logging
+
+logger = logging.getLogger()
+handler = logging.StreamHandler()
+formatter = logging.Formatter(
+        '%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+logger.setLevel(DEFAULT_LOG_LEVEL)
 
 
 
-
-
-
-#converts a value to a float gracefully
-def convert_to_float(x):
-    try:
-        return float(x)
-    except:
-        return np.NaN
-
-
-#handy function to plot some histograms of DataFrame columns
-def plot_histogram(df, column_name, sort=False):
-    
-    histo = df[column_name].value_counts()
-    if(sort):
-        histo = histo.sort_index()
-    X = np.array(histo.keys())
-    Y = histo.values
-    plot.bar(np.arange(len(X)), Y, align='center')
-    plot.xticks(np.arange(len(X)), X)
-    plot.title("Histogram of "+column_name+" values")
-    plot.xlabel(column_name)
-    plot.ylabel('Frequency')
-    fig = matplotlib.pyplot.gcf()
-    fig.set_size_inches(18.5, 10.5, forward=True)
-    plot.show()
-    
-
-#plot correlation of categorical feature with outcome variable
-def plot_feature_correlation(df, feature_column_name, sort=False):
-    c = 1.0  - df.groupby(feature_column_name)['outcome'].mean()
-    if (sort):
-        c = c.sort_index()
-    X = np.array(c.keys())
-    Y = c.values
-    plot.bar(np.arange(len(X)), Y, align='center')
-    plot.xticks(np.arange(len(X)), X)
-    plot.title("Correlation of outcome variable with "+feature_column_name+" categories")
-    plot.xlabel(feature_column_name)
-    plot.ylabel('Percent non spectrum')
-    fig = matplotlib.pyplot.gcf()
-    fig.set_size_inches(18.5, 10.5, forward=True)
-    plot.show()
-
-
-def plot_classifier_profiles(bunch_of_classifier_data, plot_title, default_coverage_to_plot = 0.75, specificity_bin_width = 0.025, ylim=(0., 1.), legend_font_size=16, shaded_sensitivity_zones=True):
-    import matplotlib.pyplot as plt
-    from matplotlib.colors import LinearSegmentedColormap 
-    
-    fig = plt.figure(figsize=(20, 6))
-
-    #setup axes        
-    plt.xlabel('specificity', fontsize=28)
-    plt.xticks(np.arange(0.0, 1.1, 0.05), fontsize=16)
-    plt.xlim(0.0, 1.0)
-    plt.ylabel('sensitivity', fontsize=28)
-    plt.yticks(np.arange(0.0, 1.1, 0.05), fontsize=16)
-    plt.ylim(ylim)
-    
-    #add shaded sensitivity zones if required
-    if (shaded_sensitivity_zones):
-    	plt.axhspan(0.7, 0.8, edgecolor='none', facecolor='lightyellow', alpha=1.0, zorder=1)
-    	plt.axhspan(0.8, 0.9, edgecolor='none', facecolor='orange', alpha=0.3, zorder=1)
-
-    #plot data 
-    for (classifier_info, sensitivity_specificity_dataframe) in bunch_of_classifier_data:
-        print 'Plot for classifier info: ', classifier_info
-    
-    	#if we're being asked to plot the optimal point only (as opposed to an ROC curve)
-    	if ('type' in classifier_info and classifier_info['type'] == 'optimal_point'):
-        
-        	label = classifier_info['label'] if 'label' in classifier_info else 'unnamed classifier' 
-        	if sensitivity_specificity_dataframe['coverage']<1.0:
-        		label = label + ' @ '+"{0:.0f}%".format(100*sensitivity_specificity_dataframe['coverage'])+' coverage'
-        	size = classifier_info['size'] if 'size' in classifier_info else 400
-        	linestyle = classifier_info['linestyle'] if 'linestyle' in classifier_info else '-'
-        	alpha = classifier_info['alpha'] if 'alpha' in classifier_info else 0.75
-        	fill =  classifier_info['fill'] if 'fill' in classifier_info else True
-        	edgecolors = classifier_info['color'] if 'color' in classifier_info else None
-        	if (fill):
-        		facecolors = classifier_info['color'] if 'color' in classifier_info else None
-        	else:
-        		facecolors = 'none'
-	
-        	
-        	
-         	
-        	label = label + " [ {0:.0f}%".format(100*sensitivity_specificity_dataframe['sensitivity'])+' sens, '
-        	label = label + "{0:.0f}%".format(100*sensitivity_specificity_dataframe['specificity'])+' spec]'
-       
-
-        	plt.scatter([sensitivity_specificity_dataframe['specificity']],[sensitivity_specificity_dataframe['sensitivity']], s=size, alpha=alpha, facecolors=facecolors, edgecolors=edgecolors, label=label, zorder=10)
-    	
-    	#we default to plotting curves
-    	else:
-    	
-            min_acceptable_coverage = classifier_info['coverage'] if 'coverage' in classifier_info else default_coverage_to_plot
-            specificity_sensitivity_values = [(spec, sen) for spec, sen in zip(sensitivity_specificity_dataframe['specificity'].values, sensitivity_specificity_dataframe['sensitivity'].values)]
-            plot_color = classifier_info['color'] if 'color' in classifier_info else None
-            label = classifier_info['label'] if 'label' in classifier_info else 'unnamed classifier' 
-            linewidth = classifier_info['linewidth'] if 'linewidth' in classifier_info else 3
-            linestyle = classifier_info['linestyle'] if 'linestyle' in classifier_info else '-'
-	
-	
-            if 'coverage' not in sensitivity_specificity_dataframe:
-                plt.plot(sensitivity_specificity_dataframe['specificity'], sensitivity_specificity_dataframe['sensitivity'], marker=None, linewidth=linewidth, label=label, color = plot_color, linestyle=linestyle)
-	 
-            else:
-	                                   
-                sensitivity_specificity_dataframe['rounded_specificity'] = sensitivity_specificity_dataframe['specificity'].apply(lambda x: 0 if np.isnan(x) else specificity_bin_width*(int(x/specificity_bin_width)) )
-				
-                acceptable_coverage_sensitivity_specificity_dataframe = sensitivity_specificity_dataframe[sensitivity_specificity_dataframe.coverage>=min_acceptable_coverage]
-                min_sensitivity = acceptable_coverage_sensitivity_specificity_dataframe.groupby('rounded_specificity')['sensitivity'].min()
-                max_sensitivity = acceptable_coverage_sensitivity_specificity_dataframe.groupby('rounded_specificity')['sensitivity'].max()
-
-                specificity = acceptable_coverage_sensitivity_specificity_dataframe.groupby('rounded_specificity')['rounded_specificity'].max()
-	
-                plt.plot(specificity, max_sensitivity, linewidth=linewidth, label=label+' @ '+"{0:.0f}%".format(100*min_acceptable_coverage)+'+ coverage', color = plot_color, linestyle=linestyle)
-	            
-
-    #add legend
-    plt.legend(loc="lower left", prop={'size':legend_font_size})
-    
-    #add title
-    plt.title(plot_title, fontsize=20, fontweight='bold')
-    
-    #let's do it!
-    plt.show()
-    return plt,fig
-
-#same as above but plots a simple bar chart instead of complicated ROC curves
-def barplot_classifier_profiles(bunch_of_classifier_data, plot_title, sensitivity_low=0.75, sensitivity_high=0.85, min_coverage=0.7):
-
-    barplot_data = []
-    
-    for (classifier_info, sensitivity_specificity_dataframe) in bunch_of_classifier_data:
-        label = classifier_info['label'] if 'label' in classifier_info else 'unnamed classifier' 
-    
-        if 'coverage' in sensitivity_specificity_dataframe.columns:
-            sensitivity_specificity_dataframe = sensitivity_specificity_dataframe[(sensitivity_specificity_dataframe['coverage']>=min_coverage) ]
-        
-            sensitivity = sensitivity_specificity_dataframe.groupby('rounded_specificity')['sensitivity'].max()
-            specificity = sensitivity_specificity_dataframe.groupby('rounded_specificity')['rounded_specificity'].max()
-        else:
-            sensitivity = sensitivity_specificity_dataframe.groupby('specificity')['sensitivity'].max()
-            specificity = sensitivity_specificity_dataframe.groupby('specificity')['specificity'].max()
-
-        temp = pd.DataFrame(zip(specificity,sensitivity), columns=['specificity', 'sensitivity'])
-        temp2 = temp[(temp['sensitivity']>=sensitivity_low) & (temp['sensitivity']<=sensitivity_high)]
-        bar_height =  temp2['specificity'].mean()
-
-        barplot_data += [ (classifier_info['label'],bar_height) ]
-
-    fig = plt.figure(figsize=(20, 10))
-
-    barlist = plt.barh( range(len(barplot_data)), [x[1] for x in barplot_data] , align='center', edgecolor = "black", alpha=0.8 )
-    plt.yticks(range(len(barplot_data)), [x[0] for x in barplot_data])
-
-    #setup value labels
-    for i, v in enumerate( [x[1] for x in barplot_data] ):
-        plt.text(v - 0.05,  i-0.1, "{0:.0f}%".format(100*v), color='black', fontsize=24)
-    
-    #setup name labels
-    for i,v in enumerate ( [x[0]['label'] for x in bunch_of_classifier_data] ):
-        plt.text(0.02,  i-0.1, v, color='black', fontsize=18)
-   
-    #setup colors
-    for i in range(0, len(barlist)):
-        classifier_info = bunch_of_classifier_data[i][0]
-        color = classifier_info['color'] if 'color' in classifier_info else None
-        barlist[i].set(facecolor=color)
-
-    #setup axes        
-    plt.ylabel('algorithm', fontsize=28)
-    plt.yticks([])
- 
-    plt.xlabel('specificity', fontsize=28)
-    plt.xticks(np.arange(0.0, 1.1, 0.05), fontsize=16)
-    plt.xlim(0.0, 1.0)
-
-    #add title
-    plt.title(plot_title, fontsize=20, fontweight='bold')
-
-    #let's do it!    
-    print 'show figure with title ', plot_title
-    plt.show()
-    return plt,fig
-
-
-
-#handy function that operates on a DF column and maps the data range to [0-1]
 def normalize_range(column):
-
+    '''
+    Handy function that operates on a DF column and maps the data range to [0-1]
+    '''
     min_val = min(column.values)
     max_val = max(column.values)
     output = (column.values - min_val) / (max_val - min_val)
     return output
 
-    
-#handy function to return list of DataFrame columns that have a keyword (like ADIR or ADOS) somewhere in their title
+
 def columns_about(df, keyword):
+    '''
+    Handy function to return list of DataFrame columns that have a keyword (like ADIR or ADOS) somewhere in their title
+    '''
     return [x for x in list(df.columns) if keyword.lower() in x.lower()]
-    
 
-#handy function to replace certain values in certain columns of a dataframe. Useful for feature value mapping before training
+
 def replace_values_in_dataframe_columns(df, columns, values, replacement, replace_if_equal=True):
-
+    '''
+    Handy function to replace certain values in certain columns of a dataframe. Useful for feature value mapping before training
+    '''
     for column in columns:
-        
+
         if (replace_if_equal):
             mask = df[column].isin(values)
         else:
             mask = np.logical_not( df[column].isin(values) )
-            
+
         df[column][mask] = replacement
-   
-#handy function to subsample dataframe by choosing x% of the samples of each 'class' as defined by a column in the df                
+
+
 def subsample_per_class(df, class_column_name, dict_ratio_per_class):
+    '''
+    Handy function to subsample dataframe by choosing x% of the samples of each 'class' as defined by a column in the df
+    '''
     output_df = pd.DataFrame()
     for class_name in dict_ratio_per_class.keys():
         df_this_class = df[df[class_column_name]==class_name]
@@ -254,11 +85,10 @@ def subsample_per_class(df, class_column_name, dict_ratio_per_class):
 
 
 def balance_dataset_on_dimensions(dataset, dimensions, enforce_group_weight_instructions=None, verbose=False):
-
-    ''' if only dataset and dimensions are passed, this function will enforce equal weighting for the sum of all
-    rows in all combinations of dimensions.
+    ''' If only dataset and dimensions are passed, this function will enforce equal weighting
+    for the sum of all rows in all combinations of dimensions.
 	....... Note: many new functions are added lower in this file for purposes of constructing the enforce_group_weight_instructions
-	....... or the inputs that are needed to determine it, 
+	....... or the inputs that are needed to determine it,
 	....... such as get_desired_condition_fracs, get_general_diagnoses_from_specific_diagnoses, get_combined_column_from_one_hot_columns
 
     If enforce_group_weight_instructions is defined, then this function will first use dimensions to make a set of equal weights,
@@ -292,11 +122,11 @@ def balance_dataset_on_dimensions(dataset, dimensions, enforce_group_weight_inst
     '''
 
     if 'sample_weights' in dataset.columns:
-        #print 'Warning, sample weights is already defined in dataframe before calling balance_dataset_on_dimensions. Overwriting old weights.'
         dataset = dataset.drop('sample_weights', 1)
+
     if 'pre_scaled_sample_weights' in dataset.columns:
-        #print 'Warning, sample weights is already defined in dataframe before calling balance_dataset_on_dimensions. Overwriting old weights.'
         dataset = dataset.drop('pre_scaled_sample_weights', 1)
+
     counts = {}
     weights = {}
     total_count = 0
@@ -308,23 +138,25 @@ def balance_dataset_on_dimensions(dataset, dimensions, enforce_group_weight_inst
     for key,count in counts.iteritems():
         weight = float(total_count) / float(count)
         weights[key] = weight
-        
-    if verbose:
-        for group in counts:
-            print(str(group)+": "+str(counts[group])+" out of "+str(total_count)+" -> weight "+str(weights[group]))
+
+    for group in counts:
+        logger.info("%s: %s out of %s -> weight %s", (str(group), str(counts[group]), str(total_count), str(weights[group])))
 
     sample_weight_dict = {}
     for  index, row in dataset.iterrows():
-
         sample_weight =  weights[tuple([row[dimension] for dimension in dimensions])]
         sample_weight_dict[index] = sample_weight
+
     dataset['sample_weights'] = pd.Series(sample_weight_dict)
 
-    #### The rest of this function optionally enforces a specific requested normalization of sample weights,
-    #### According to enforce_group_weight_instructions
+    ## The rest of this function optionally enforces a specific requested normalization of sample weights,
+    ## According to enforce_group_weight_instructions
+
     def weight_scaling_function(row, enforce_group_weight_instructions, weight_scaling_factors_by_bin):
-        ''' helper function for balance_dataset_on_dimensions, which determines scaling factors needed 
-        to achieve enforce_group_weight_instructions '''
+        '''
+        Helper function for balance_dataset_on_dimensions, which determines scaling factors needed
+        to achieve enforce_group_weight_instructions
+        '''
         balance_across_this_key = enforce_group_weight_instructions['balance_across_this_key']
         bin_by = enforce_group_weight_instructions['bin_by']
         current_weight = row['sample_weights']
@@ -334,24 +166,25 @@ def balance_dataset_on_dimensions(dataset, dimensions, enforce_group_weight_inst
         this_group = row[balance_across_this_key]
         scaling_factor = scaling_factors[this_group]
         scaled_weight = current_weight*scaling_factor
+
         return scaled_weight
 
     if enforce_group_weight_instructions is not None:
         balance_across_this_key = enforce_group_weight_instructions['balance_across_this_key']
         allowed_groups_to_balance = np.unique(dataset[balance_across_this_key].values)
-        ### balance_across_this_key might be a column that specifies non-overlapping conditions,
-        ### or any other grouping column else you want to fix weights on
+        # balance_across_this_key might be a column that specifies non-overlapping conditions,
+        # or any other grouping column else you want to fix weights on
         bin_by = enforce_group_weight_instructions['bin_by']
-        ### An example of bin_by would be age_category. Will enforce weighting according to
-        ### instructions in each bin.
+        # An example of bin_by would be age_category. Will enforce weighting according to
+        # instructions in each bin.
         unique_bins = np.unique(dataset[bin_by].values)
         dataset['pre_scaled_sample_weights'] = cp.deepcopy(dataset['sample_weights'].values)
         weight_scaling_factors_by_bin = {}
-        ### Now loop over bins and determine needed scaling factors
+        # Now loop over bins and determine needed scaling factors
         for this_bin in unique_bins:
             this_bin_dataset = dataset[dataset[bin_by]==this_bin]
             desired_fracs_df = enforce_group_weight_instructions['desired_tot_weights_df']
-            ### desired_bin_fracs are the weights we want to enforce in this bin
+            # desired_bin_fracs are the weights we want to enforce in this bin
             desired_bin_fracs = (desired_fracs_df[desired_fracs_df[bin_by]==this_bin][allowed_groups_to_balance].reset_index()).iloc[0]
             starting_weights = (this_bin_dataset.groupby(balance_across_this_key).sum())['pre_scaled_sample_weights']
             sum_starting_weights = np.sum(starting_weights.values)
@@ -359,10 +192,10 @@ def balance_dataset_on_dimensions(dataset, dimensions, enforce_group_weight_inst
             scaling_factors = desired_bin_fracs / starting_fractions
             weight_scaling_factors_by_bin[this_bin] = scaling_factors
 
-        ### Now that we know the scaling factors, apply them
+        # Now that we know the scaling factors, apply them
         dataset['sample_weights'] = dataset.apply(
                     weight_scaling_function, args=(enforce_group_weight_instructions, weight_scaling_factors_by_bin), axis=1)
-    ### Extract the weights we want to return into a separate series and drop the redundant columns in the dataframe
+    # Extract the weights we want to return into a separate series and drop the redundant columns in the dataframe
     weights_to_return = cp.deepcopy(dataset['sample_weights'])
     if 'sample_weights' in dataset.columns:
         dataset = dataset.drop('sample_weights', 1)
@@ -407,27 +240,30 @@ def get_presence_of_behavior_rules_dict():
     return presence_rules_dict
 
 
-
-#prepare a  dataset for modeling by preprocessing every feature into the appropriate encoding and splitting into two matrices
-#X=features and Y=target
 def prepare_data_for_modeling(df, feature_columns, feature_encoding_map, target_column, force_encoded_features=[]):
-    ''' force_features is an optional argument when you want to force agreement with particular encoded feature set '''
-    ######## 
-    #### motivation for "pseudo mixed ordinal/categorical" features:
-    #### values 0 - 4 are considered to be ordered from low to high severity
-    #### however other values and missing values could have all kinds of different meanings
-    #### in rare cases it is obvious that a value like 8 can be considered "more sever" than
-    #### a lower value, but this it is more common that no clear interpretation like this can be made
+    '''
+    Prepare a  dataset for modeling by preprocessing every feature into the appropriate encoding
+    and splitting into two matrices X=features and Y=target.
+
+    force_encoded_features is an optional argument when you want to force agreement with particular encoded feature set
+    '''
+
     ####
-    #### Goal: make it easy for decision trees to track the severity of the values (0-4) by making feature numeric
-    #### however, other "categorical" values exist. These should be clustered together on one side of the real 
-    #### numerical values to make it as easy as possible for a decision tree to branch between them and the numerical values.
-    #### The most common "categorical" values are those like 7 and 8. Map negative values (values exist as -1, -5, and -8) to a positive value
-    #### by adding 20 to the value
-    #### non numeric values such as '' are mapped to +50
-    #### 
-    #### These choices are pretty arbitrary, but they keep the categorical variables on one side of the distribution without merging any of them
-    ########
+    ## motivation for "pseudo mixed ordinal/categorical" features:
+    ## values 0 - 4 are considered to be ordered from low to high severity
+    ## however other values and missing values could have all kinds of different meanings
+    ## in rare cases it is obvious that a value like 8 can be considered "more sever" than
+    ## a lower value, but this it is more common that no clear interpretation like this can be made
+    ##
+    ## Goal: make it easy for decision trees to track the severity of the values (0-4) by making feature numeric
+    ## however, other "categorical" values exist. These should be clustered together on one side of the real
+    ## numerical values to make it as easy as possible for a decision tree to branch between them and the numerical values.
+    ## The most common "categorical" values are those like 7 and 8. Map negative values (values exist as -1, -5, and -8) to a positive value
+    ## by adding 20 to the value
+    ## non numeric values such as '' are mapped to +50
+    ##
+    ## These choices are pretty arbitrary, but they keep the categorical variables on one side of the distribution without merging any of them
+    ####
 
     def safe_convert_to_number(x, dtype=float, problem_val=999):
         try:
@@ -436,23 +272,22 @@ def prepare_data_for_modeling(df, feature_columns, feature_encoding_map, target_
             return converted_val
         except:
             return problem_val
-            
 
 
     def num_cat_XForm(inValue, minVal=-0.0001):
         try:
-            
+
             outValue = float(inValue) if float(inValue) > -0.0001 else float(inValue)+20
         except:
-            ### Values like '' cannot be converted to floats and will end up here
+            # Values like '' cannot be converted to floats and will end up here
             outValue = 50.
         return outValue
+
 
     mixed_numeric_categorical_features = [x for x in feature_columns if (x in feature_encoding_map and feature_encoding_map[x]=='mixed_numeric_categorical')]
     mixed_numeric_categorical_X = df[mixed_numeric_categorical_features]
     for column in mixed_numeric_categorical_X.columns:
         mixed_numeric_categorical_X[column].apply(num_cat_XForm)
-
 
     #scalar features don't require any enconding
     scalar_encoded_features = [x for x in feature_columns if (x in feature_encoding_map and feature_encoding_map[x]=='scalar')]
@@ -464,29 +299,39 @@ def prepare_data_for_modeling(df, feature_columns, feature_encoding_map, target_
     one_hot_encoded_features = [x for x in feature_columns if (x in feature_encoding_map and feature_encoding_map[x]=='one_hot')]
     one_hot_encoded_feature_dataset = df[one_hot_encoded_features]
     vectorizer = feature_extraction.DictVectorizer(sparse = False)
-    one_hot_encoded_feature_dataset_dict = one_hot_encoded_feature_dataset.T.to_dict().values()  ### this becomes a list of dicts of rows
-    one_hot_encoded_feature_dataset_dict_vectorized = vectorizer.fit_transform( one_hot_encoded_feature_dataset_dict )   ### This becomes a 2D array
-    one_hot_encoded_feature_dataset = pd.DataFrame(one_hot_encoded_feature_dataset_dict_vectorized, columns=vectorizer.feature_names_)  
+    # this becomes a list of dicts of rows
+    one_hot_encoded_feature_dataset_dict = one_hot_encoded_feature_dataset.T.to_dict().values()
+    # this becomes a 2D array
+    one_hot_encoded_feature_dataset_dict_vectorized = vectorizer.fit_transform( one_hot_encoded_feature_dataset_dict )
+    one_hot_encoded_feature_dataset = pd.DataFrame(one_hot_encoded_feature_dataset_dict_vectorized, columns=vectorizer.feature_names_)
     one_hot_encoded_features = vectorizer.feature_names_
+
     #exclude all features that include the word "missing"
-    one_hot_encoded_features = [x for x in one_hot_encoded_features if "missing" not in x]    
-    #prepare X    
+    one_hot_encoded_features = [x for x in one_hot_encoded_features if "missing" not in x]
+
+    #prepare X
     one_hot_encoded_X=one_hot_encoded_feature_dataset[one_hot_encoded_features]
-     
+
     #discrete encoding features is handled manually
     discrete_encoded_features = [x for x in feature_columns if (x in feature_encoding_map and feature_encoding_map[x]=='discrete')]
     discrete_encoded_X = df[discrete_encoded_features]
     for feature in discrete_encoded_X.columns:
         possible_values = discrete_encoded_X[feature].unique()
-        discrete_encoded_X[feature+"=0"] = discrete_encoded_X[feature].apply(lambda x: 1 if x=='0' else 0)
-        discrete_encoded_X[feature+"=1+"] = discrete_encoded_X[feature].apply(lambda x: 1 if (x=='1' or x=='2' or x=='3' or x=='4') else 0)
+
+        discrete_encoded_X[feature+"=0"] = discrete_encoded_X[feature].apply(lambda x: 1 if x == '0' else 0)
+
+        discrete_encoded_X[feature+"=1+"] = discrete_encoded_X[feature].apply(lambda x: 1 if x in ['1', '2', '3', '4'] else 0)
+
         if ('2' in possible_values) or ('3' in possible_values) or ('4' in possible_values):
-            discrete_encoded_X[feature+"=2+"] = discrete_encoded_X[feature].apply(lambda x: 1 if (x=='2' or x=='3' or x=='4') else 0)
+            discrete_encoded_X[feature+"=2+"] = discrete_encoded_X[feature].apply(lambda x: 1 if x in ['2', '3', '4'] else 0)
+
         if ('3' in possible_values) or ('4' in possible_values):
-            discrete_encoded_X[feature+"=3+"] = discrete_encoded_X[feature].apply(lambda x: 1 if (x=='3' or x=='4') else 0)
+            discrete_encoded_X[feature+"=3+"] = discrete_encoded_X[feature].apply(lambda x: 1 if x in ['3', '4'] else 0)
+
         if '4' in possible_values:
-            discrete_encoded_X[feature+"=4"] = discrete_encoded_X[feature].apply(lambda x: 1 if (x=='4') else 0)
-    	discrete_encoded_X = discrete_encoded_X.drop(feature, axis=1)
+            discrete_encoded_X[feature+"=4"] = discrete_encoded_X[feature].apply(lambda x: 1 if x == '4' else 0)
+
+        discrete_encoded_X = discrete_encoded_X.drop(feature, axis=1)
     discrete_encoded_features = [x for x in discrete_encoded_X.columns]
 
     #presence of behavior features is an experimental ADOS encoding scheme for now
@@ -497,22 +342,22 @@ def prepare_data_for_modeling(df, feature_columns, feature_encoding_map, target_
         if feature in presence_of_behavior_rules_dict.keys():
             presence_of_behavior_encoded_X[feature+"_behavior_present"] = presence_of_behavior_encoded_X[feature].apply(lambda x: 1 if x in presence_of_behavior_rules_dict[feature] else 0)
         else:
-            print 'Warning: presence encoding rules not defined for this feature, so set to zero. Feature=', feature
+            logger.warning("Warning: presence encoding rules not defined for this feature, so set to zero. Feature=%s" % feature)
             presence_of_behavior_encoded_X[feature+"_behavior_present"] = 0
     	presence_of_behavior_encoded_X = presence_of_behavior_encoded_X.drop(feature, axis=1)
     presence_of_behavior_encoded_features = [x for x in presence_of_behavior_encoded_X.columns]
-    
+
     #any features not present in the feature encoding map will be added as-is without encoding
     other_features = [x for x in feature_columns if x not in feature_encoding_map]
     other_features_X = df[other_features]
-        
+
     #stitch all sets of features together into one X
-    X =  pd.concat([other_features_X.reset_index(drop=True), mixed_numeric_categorical_X.reset_index(drop=True), scalar_encoded_X.reset_index(drop=True), one_hot_encoded_X.reset_index(drop=True), discrete_encoded_X.reset_index(drop=True), presence_of_behavior_encoded_X.reset_index(drop=True)], axis=1)  
+    X =  pd.concat([other_features_X.reset_index(drop=True), mixed_numeric_categorical_X.reset_index(drop=True), scalar_encoded_X.reset_index(drop=True), one_hot_encoded_X.reset_index(drop=True), discrete_encoded_X.reset_index(drop=True), presence_of_behavior_encoded_X.reset_index(drop=True)], axis=1)
     features = other_features + mixed_numeric_categorical_features + scalar_encoded_features + one_hot_encoded_features + discrete_encoded_features + presence_of_behavior_encoded_features
-        
+
     #y is just the target column
-    y=np.asarray(df[target_column], dtype="|S20") 
-        
+    y=np.asarray(df[target_column], dtype="|S20")
+
     if force_encoded_features != []:
         missing_features = list(set(force_encoded_features) - set(features))
         extra_features = list(set(features) - set(force_encoded_features))
@@ -524,9 +369,28 @@ def prepare_data_for_modeling(df, feature_columns, feature_encoding_map, target_
 
     return X,y,features
 
-def training_data_statistical_stability_tests(dataset, sample_frac_sizes, feature_columns, feature_encoding_map, target_column, sample_weights, dunno_range, model_function,
-        outcome_classes, outcome_class_priors, cross_validate_group_id, n_folds, n_duplicate_runs, do_plotting=False, plot_title='', **model_parameters):
-    ''' Run tests to see how statistically limited our sample is (training and X-validation errors) '''
+
+def training_data_statistical_stability_tests(dataset,
+                                              sample_frac_sizes,
+                                              feature_columns,
+                                              feature_encoding_map,
+                                              target_column,
+                                              sample_weights,
+                                              dunno_range,
+                                              model_function,
+                                              outcome_classes,
+                                              outcome_class_priors,
+                                              cross_validate_group_id,
+                                              n_folds,
+                                              n_duplicate_runs,
+                                              do_plotting=False,
+                                              plot_title='',
+                                              **model_parameters):
+
+    '''
+    Run tests to see how statistically limited our sample is (training and X-validation errors)
+    '''
+
     train_auc_vals = []
     Xvalidate_auc_vals = []
     for sample_frac in sample_frac_sizes:
@@ -535,31 +399,27 @@ def training_data_statistical_stability_tests(dataset, sample_frac_sizes, featur
         use_n_duplicates = n_duplicate_runs
         if sample_frac < 0.04: use_n_duplicates = 4*n_duplicate_runs
         if sample_frac < 0.08: use_n_duplicates = 2*n_duplicate_runs
-        for i in range(use_n_duplicates):   ### run a number of times and average performances to iron out uncertainties
+        for i in range(use_n_duplicates):   # run a number of times and average performances to iron out uncertainties
             try:
-                #print 'get AUC for sample_frac: ', sample_frac
                 frac_dataset = dataset.sample(frac=sample_frac)
                 frac_sample_weights = sample_weights.iloc[frac_dataset.index]
                 train_model, train_features, train_y_predicted_without_dunno, train_y_predicted_with_dunno, train_y_predicted_probs =\
-                    all_data_model(frac_dataset, feature_columns=feature_columns, feature_encoding_map=feature_encoding_map, target_column=target_column,
-                            sample_weight=frac_sample_weights, dunno_range=dunno_range, model_function=model_function, **model_parameters)
-    
-                train_metrics = get_classifier_performance_metrics(outcome_classes, outcome_class_priors, frac_dataset[target_column], train_y_predicted_without_dunno,
-                    train_y_predicted_with_dunno, train_y_predicted_probs)
+                    all_data_model(frac_dataset, feature_columns=feature_columns, feature_encoding_map=feature_encoding_map, target_column=target_column, sample_weight=frac_sample_weights, dunno_range=dunno_range, model_function=model_function, **model_parameters)
+
+                train_metrics = get_classifier_performance_metrics(outcome_classes, outcome_class_priors, frac_dataset[target_column], train_y_predicted_without_dunno, train_y_predicted_with_dunno, train_y_predicted_probs)
                 train_auc = train_metrics['without_dunno']['auc']
                 duplicate_train_auc_vals.append(train_auc)
-    
-    
+
                 Xvalidate_output = cross_validate_model(frac_dataset, sample_weights=frac_sample_weights, feature_columns=feature_columns,
                     feature_encoding_map=feature_encoding_map, target_column=target_column, dunno_range=dunno_range, n_folds=n_folds,
-                    outcome_classes=outcome_classes, outcome_class_priors=outcome_class_priors, model_function=model_function, groupid=cross_validate_group_id,
-                    **model_parameters)
+                    outcome_classes=outcome_classes, outcome_class_priors=outcome_class_priors, model_function=model_function, groupid=cross_validate_group_id, **model_parameters)
                 Xvalidate_auc = Xvalidate_output['overall_metrics']['without_dunno']['auc']
-                print 'For sample_frac: ', sample_frac, ', train AUC: ', train_auc, ', Xvalidate_auc: ', Xvalidate_auc
+                logger.info("For sample_frac: %.3f, train AUC: %s, Xvalidate_auc: %s", (sample_frac, str(train_auc), str(Xvalidate_auc)))
                 duplicate_Xvalidate_auc_vals.append(Xvalidate_auc)
             except:
-                print 'Bad statistical fluctuation leading to all samples of same target output. Skip this round.'
-        print 'For ', sample_frac, ', average train AUC: ', np.mean(duplicate_train_auc_vals), ', average XV AUC: ', np.mean(duplicate_Xvalidate_auc_vals)
+                logger.error('Bad statistical fluctuation leading to all samples of same target output. Skip this round.')
+
+        logger.info("For %.3f, average train AUC: %s, average XV AUC: %s") sample_frac, str(np.mean(duplicate_train_auc_vals)), str(np.mean(duplicate_Xvalidate_auc_vals))
         train_auc_vals.append(np.mean(duplicate_train_auc_vals))
         Xvalidate_auc_vals.append(np.mean(duplicate_Xvalidate_auc_vals))
 
@@ -576,35 +436,36 @@ def training_data_statistical_stability_tests(dataset, sample_frac_sizes, featur
         plt.gca().tick_params(axis='y', labelsize=16)
         plt.show()
 
+
 def combine_classifier_performance_metrics(values1, values2, numbers_in_sample_1, numbers_in_sample_2, values1_err=None, values2_err=None):
-    ''' 
+    '''
 	Note: this function does not know what the type of metric is. It is the user's responsibility to use this
 	function only on valid metrics. This calculation has been verified for recall and precision (so sensitivity
 	and specificity are ok). It will not be as accurate for AUC.
 
-	This function could have been written to operate on the output of a single measurement, but it is structured to 
+	This function could have been written to operate on the output of a single measurement, but it is structured to
 	run on arrays of performance values (values1, values2), and arrays of the numbers in each sample (numbs_in_sample1, ...)
 	Each element of the arrays would represent the performance of a different measurement
-	
 
-	Note that this combination is for performances at the fixed operating that were used to determine values1 and values2. 
+
+	Note that this combination is for performances at the fixed operating that were used to determine values1 and values2.
 	If these thresholds were optimized independently before the combination it may produce a sub-optimal combined result
 	compared to the case where the thresholds of the two algorithms were both floated in the optimization with the combination
-	in mind. 
+	in mind.
 
     Assumes that all inputs are numpy arrays of values. If you only want to do this combination for a single
     operating point then arrays can be of size 1.
 
     values1 and values2 represent arrays of the metric value (recall, or precision)
     numbers_in_sample_1 and numbers_in_sample_2 represent arrays of the number of children in bucket 1 or bucket 2. In the case of autism recall this would be the number
-       of children with autism in sample 1 or 2. In the case of autism precision this would be the number of children 
-       who the model thinks have autism in sample 1 or 2. If calculating a "real life" precision the "n's" should be 
+       of children with autism in sample 1 or 2. In the case of autism precision this would be the number of children
+       who the model thinks have autism in sample 1 or 2. If calculating a "real life" precision the "n's" should be
        chosen to get the correct proportions for the real life hypothesis (any n1 = n2 would be fine for a 50% each real life
        hypothesis)..
 
     Derivation (done separately on each index of the arrays):
     ~~~~~~~~~
-    ### Combining young and old samples: the calculations:
+    # Combining young and old samples: the calculations:
     N_a,c = #  children with autism, correctly diagnosed
     N_a,ic = # children with autism, incorrectly diagnosed
     N_n,c = # children without autism, correctly diagnosed
@@ -616,13 +477,13 @@ def combine_classifier_performance_metrics(values1, values2, numbers_in_sample_1
     N_3,x = Same numbers for 3- bin
     N_4,x = Same numbers for 4+ bin, etc ...
 
-    ### Definitions in the 3- bin:
+    # Definitions in the 3- bin:
     Recall_3,a = N_3,a,c / (N_3,a,c + N_3,a,ic)
     Recall_3,n = N_3,n,c / (N_3,n,c + N_3,n,ic)
     Precision_3,a = N_3,a,c / (N_3,a,c + N_3,n,ic)
     Precision_3,n = N_3,n,c / (N_3,n,c + N_3,a,ic)
 
-    ### Now calculate definitions in the combined, 3- and 4+ bin (or comparable for young vs old in video)
+    # Now calculate definitions in the combined, 3- and 4+ bin (or comparable for young vs old in video)
     **... the definition of combined recall is:**
     Recall_a = (N_3,a,c + N_4,a,c) / (N_3,a,c + N_3,a,ic + N_4,a,c + N_4,a,ic)
 
@@ -645,18 +506,19 @@ def combine_classifier_performance_metrics(values1, values2, numbers_in_sample_1
     ** Precision_a = (N_3,p / N_p) * Precision_3,a + (N_4,p / N_p) * Precision_4,a **
 
     '''
-    assert len(numbers_in_sample_1+numbers_in_sample_2) == len(numbers_in_sample_1)   ### Simple test that n1 and n2 are numpy arrays
-    print 'values1: ', values1
-    print 'values2: ', values2
+    assert len(numbers_in_sample_1+numbers_in_sample_2) == len(numbers_in_sample_1)   # Simple test that n1 and n2 are numpy arrays
+    logger.info('values1: ', values1)
+    logger.info('values2: ', values2)
+
     assert len(values1 + values2) == len(values1)
     numbers_in_sample__total = (numbers_in_sample_1 + numbers_in_sample_2).astype(float)
     weights1 = ((numbers_in_sample_1) / numbers_in_sample__total).astype(float)
     weights2 = ((numbers_in_sample_2) / numbers_in_sample__total).astype(float)
 
-    #### weight1 + weight2 = 1.0 by construction, so don't need to divide by weights in average
+    ## weight1 + weight2 = 1.0 by construction, so don't need to divide by weights in average
     weighted_average_metrics = (weights1 * values1) + (weights2 * values2)
     if values1_err is not None and values2_err is not None:
-        ### ignore errors on weights: probably small compared to errors on values
+        # ignore errors on weights: probably small compared to errors on values
         weighted_average_metrics_err = np.sqrt(((weights1*values1_err)**2.) + ((weights2*values2_err)**2.))
     else:
         weighted_average_metrics_err = None
@@ -684,7 +546,7 @@ def get_classifier_performance_metrics(class_names, class_priors, labels, predic
     	    except ZeroDivisionError:
     	        precision_per_class[class_name] = 0.0
     	    try:
-    	        recall_per_class[class_name] = confusion_matrix[class_index][class_index] / float(sum(confusion_matrix[class_index])) 
+    	        recall_per_class[class_name] = confusion_matrix[class_index][class_index] / float(sum(confusion_matrix[class_index]))
     	    except ZeroDivisionError:
     	        recall_per_class[class_name] = 0.0
     	try:
@@ -694,47 +556,45 @@ def get_classifier_performance_metrics(class_names, class_priors, labels, predic
         return precision_per_class, recall_per_class, accuracy
 
 
-    #handy function we're going to use a few times here
     def apply_priors_to_confusion_matrix(matrix, priors):
         new_matrix = matrix.copy()
         matrix_total = float(sum(sum(matrix)))
         for i in range(0, len(priors)):
             class_prior = priors[i]
             class_proportion = float(sum(matrix[i]))/matrix_total if matrix_total>0.0 else 0.0
-            class_multiplier = (class_prior / class_proportion) if class_proportion!=0 else 1 
+            class_multiplier = (class_prior / class_proportion) if class_proportion!=0 else 1
             new_matrix[i] = np.array([100*value*class_multiplier for value in new_matrix[i]])
         return new_matrix
-           
 
     #
-    # metrics related to dataset profile 
+    # metrics related to dataset profile
     #
-    
+
     number_samples = len(labels)
 
-    #compute number of samples for every class
+    # compute number of samples for every class
     samples_per_class = {}
 
     for class_name in class_names:
         samples_per_class[class_name] = len([x for x in labels if x==class_name])
-    
 
     #
-    # metrics related to classification excluding dunno class logic 
+    # metrics related to classification excluding dunno class logic
     #
-	positive_probabilities = [x[0] for x in prediction_probabilities]
+
+    positive_probabilities = [x[0] for x in prediction_probabilities]
     auc_without_dunno = metrics.roc_auc_score([x==class_names[0] for x in labels], positive_probabilities, sample_weight=weights)
     dataset_confusion_without_dunno = confusion_matrix_0p18(labels, predictions_without_dunno, labels=class_names, sample_weight=weights)
     dataset_precision_per_class_without_dunno, dataset_recall_per_class_without_dunno, dataset_accuracy_without_dunno = compute_precision_recall_accuracy(class_names, dataset_confusion_without_dunno)
-        
+
     reallife_confusion_without_dunno = apply_priors_to_confusion_matrix(dataset_confusion_without_dunno, class_priors)
     reallife_precision_per_class_without_dunno, reallife_recall_per_class_without_dunno, reallife_accuracy_without_dunno = compute_precision_recall_accuracy(class_names, reallife_confusion_without_dunno)
-    
-    
+
+
     #
-    # metrics related to classification including dunno class logic 
-    # 
-       
+    # metrics related to classification including dunno class logic
+    #
+
     #dataset_confusion_with_dunno = metrics.confusion_matrix(labels, predictions_with_dunno, class_names+['dunno'])
     try:
         dataset_confusion_with_dunno = confusion_matrix_0p18(labels, predictions_with_dunno, class_names+['dunno'], sample_weight=weights)
@@ -742,8 +602,8 @@ def get_classifier_performance_metrics(class_names, class_priors, labels, predic
 
         reallife_confusion_with_dunno = apply_priors_to_confusion_matrix(dataset_confusion_with_dunno, class_priors)
         reallife_precision_per_class_with_dunno, reallife_recall_per_class_with_dunno, reallife_accuracy_with_dunno = compute_precision_recall_accuracy(class_names, reallife_confusion_with_dunno)
-    except Exception as msg:   ### usually because of so broad a dunno range that confusion matrix is not defined
-        #print 'Getting classifier performance metrics with dunno classified failed with message ', msg
+    except Exception as msg:   # usually because of so broad a dunno range that confusion matrix is not defined
+        logger.debug("Getting classifier performance metrics with dunno classified failed with message" % msg)
         dataset_confusion_with_dunno = None
         dataset_precision_per_class_with_dunno = {class_name: np.nan for class_name in class_names}
         dataset_recall_per_class_with_dunno = {class_name: np.nan for class_name in class_names}
@@ -754,8 +614,7 @@ def get_classifier_performance_metrics(class_names, class_priors, labels, predic
         reallife_accuracy_with_dunno = {class_name: np.nan for class_name in class_names}
         dataset_classification_rate = 0.
         reallife_classification_rate = 0.
- 
-   
+
     #create a list of labels, predictions and scores excluding the unclassified cases
     z = zip(labels.tolist(), predictions_with_dunno.tolist(), positive_probabilities)
     labels_where_classified = [x[0] for x in z if x[1]!="dunno"]
@@ -766,18 +625,18 @@ def get_classifier_performance_metrics(class_names, class_priors, labels, predic
         weights_where_classified = [x[0] for x in z if x[1]!="dunno"]
     else:
         weights_where_classified = None
-    
+
     #then compute some metrics over those
     #dataset_confusion_where_classified = metrics.confusion_matrix(labels_where_classified, predictions_where_classified, class_names)
     try:
         dataset_confusion_where_classified = confusion_matrix_0p18(labels_where_classified, predictions_where_classified, class_names, sample_weight=weights_where_classified)
-        dataset_precision_per_class_where_classified, dataset_recall_per_class_where_classified, dataset_accuracy_where_classified = compute_precision_recall_accuracy(class_names, dataset_confusion_where_classified) 
+        dataset_precision_per_class_where_classified, dataset_recall_per_class_where_classified, dataset_accuracy_where_classified = compute_precision_recall_accuracy(class_names, dataset_confusion_where_classified)
         reallife_confusion_where_classified = apply_priors_to_confusion_matrix(dataset_confusion_where_classified, class_priors)
-        reallife_precision_per_class_where_classified, reallife_recall_per_class_where_classified, reallife_accuracy_where_classified = compute_precision_recall_accuracy(class_names, reallife_confusion_where_classified) 
+        reallife_precision_per_class_where_classified, reallife_recall_per_class_where_classified, reallife_accuracy_where_classified = compute_precision_recall_accuracy(class_names, reallife_confusion_where_classified)
         dataset_classification_rate = float(sum(sum(dataset_confusion_where_classified))) / float(sum(sum(dataset_confusion_with_dunno)))
         reallife_classification_rate = float(sum(sum(reallife_confusion_where_classified))) / float(sum(sum(reallife_confusion_with_dunno)))
     except Exception as msg:
-        #print 'Getting classifier performance metrics where classified failed with message ', msg
+        logger.debug("Getting classifier performance metrics where classified failed with message" % msg)
         dataset_confusion_where_classified = None
         dataset_precision_per_class_where_classified = {class_name: np.nan for class_name in class_names}
         dataset_recall_per_class_where_classified = {class_name: np.nan for class_name in class_names}
@@ -789,13 +648,14 @@ def get_classifier_performance_metrics(class_names, class_priors, labels, predic
         dataset_classification_rate = 0.
         reallife_classification_rate = 0.
 
-    try:     #### May fail when others succeed due to roc_auc_score demand of presence of both classes
+    try:
+        # May fail when others succeed due to roc_auc_score demand of presence of both classes
         auc_where_classified = metrics.roc_auc_score([label==class_names[0] for label in labels_where_classified], probabilities_where_classified, sample_weight=weights_where_classified)
     except:
         auc_where_classified = np.nan
 
     output = {
-        'number_samples':number_samples, 
+        'number_samples':number_samples,
         'samples_per_class':samples_per_class,
         'without_dunno': {
             'auc': auc_without_dunno,
@@ -803,8 +663,8 @@ def get_classifier_performance_metrics(class_names, class_priors, labels, predic
             'reallife_accuracy':reallife_accuracy_without_dunno,
             'dataset_precision_per_class':dataset_precision_per_class_without_dunno,
             'reallife_precision_per_class':reallife_precision_per_class_without_dunno,
-            'dataset_recall_per_class':dataset_recall_per_class_without_dunno, 
-            'reallife_recall_per_class':reallife_recall_per_class_without_dunno, 
+            'dataset_recall_per_class':dataset_recall_per_class_without_dunno,
+            'reallife_recall_per_class':reallife_recall_per_class_without_dunno,
             'dataset_confusion': dataset_confusion_without_dunno,
         },
         'with_dunno': {
@@ -815,34 +675,34 @@ def get_classifier_performance_metrics(class_names, class_priors, labels, predic
             'reallife_accuracy_where_classified': reallife_accuracy_where_classified,
             'dataset_precision_per_class':dataset_precision_per_class_with_dunno,
             'reallife_precision_per_class':reallife_precision_per_class_with_dunno,
-            'dataset_recall_per_class':dataset_recall_per_class_with_dunno, 
-            'reallife_recall_per_class':reallife_recall_per_class_with_dunno, 
+            'dataset_recall_per_class':dataset_recall_per_class_with_dunno,
+            'reallife_recall_per_class':reallife_recall_per_class_with_dunno,
             'dataset_precision_per_class_where_classified':dataset_precision_per_class_where_classified,
             'reallife_precision_per_class_where_classified':reallife_precision_per_class_where_classified,
-            'dataset_recall_per_class_where_classified':dataset_recall_per_class_where_classified, 
-            'reallife_recall_per_class_where_classified':reallife_recall_per_class_where_classified, 
+            'dataset_recall_per_class_where_classified':dataset_recall_per_class_where_classified,
+            'reallife_recall_per_class_where_classified':reallife_recall_per_class_where_classified,
         	'dataset_confusion': dataset_confusion_with_dunno,
         }
 
     }
-       
+
     return output
 
 #pretty printing of outputs that you got by calling get_multi_classifier_performance_metrics
 def print_classifier_performance_metrics(class_names, metrics):
 
     print("\n\nDATASET PROFILE:\n\n")
-    
+
     print("samples\t\t"+str(metrics['number_samples']))
     for class_name in class_names:
         print(class_name+
         " samples\t"+
         str(metrics['samples_per_class'][class_name])+
         "\t["+
-        str(100.0*float(metrics['samples_per_class'][class_name]) / float(metrics['number_samples'])) 
+        str(100.0*float(metrics['samples_per_class'][class_name]) / float(metrics['number_samples']))
         +"%]"
         )
-    
+
     print("\n\nPERFORMANCE BEFORE DUNNO LOGIC:\n\n")
 
     print("AUC\t\t"+str(metrics['without_dunno']['auc']))
@@ -860,8 +720,8 @@ def print_classifier_performance_metrics(class_names, metrics):
 
     print("\n\nPERFORMANCE INCLUDING DUNNO LOGIC:\n\n")
 
-    print("classifcation rate [Dataset]\t"+str(metrics['with_dunno']['dataset_classification_rate']))    
-    print("classifcation rate [Reallife]\t"+str(metrics['with_dunno']['reallife_classification_rate']))    
+    print("classifcation rate [Dataset]\t"+str(metrics['with_dunno']['dataset_classification_rate']))
+    print("classifcation rate [Reallife]\t"+str(metrics['with_dunno']['reallife_classification_rate']))
     print("accuracy where classified [Dataset]\t"+str(metrics['with_dunno']['dataset_accuracy_where_classified']))
     print("accuracy where classified [Reallife]\t"+str(metrics['with_dunno']['reallife_accuracy_where_classified']))
 
@@ -878,50 +738,55 @@ def print_classifier_performance_metrics(class_names, metrics):
     print("\n")
     print("Confusion Matrix:")
     print(metrics['with_dunno']['dataset_confusion'])
-    
 
-#returns a sorted list of (important feature, importance value) pairs for a passed model
+
 def get_important_features(model, feature_names, relative_weight_cutoff=0.01):
+    '''
+    Returns a sorted list of (important feature, importance value) pairs for a passed model
+    '''
     sorted_feature_importances = sorted(zip(feature_names, model.feature_importances_), key=lambda x: x[1], reverse=True)
     max_feature_importance = sorted_feature_importances[0][1]
     min_feature_importance = relative_weight_cutoff*max_feature_importance
     trimmed_sorted_feature_importances = [x for x in sorted_feature_importances if x[1]>min_feature_importance]
     return trimmed_sorted_feature_importances
 
-#name says it all
-def dedup_list(mylist):
-    newlist = []
-    for i in mylist:
-        if i not in newlist:
-            newlist.append(i)
-    return newlist
 
-#given the output of get_important_features(), returns the n best features to keep 
-#ignoring anything after a certain suffix char in the feature name, and excluding certain features
+def dedup_list(mylist):
+    return sorted(set(mylist), key = lambda x : mylist.index(x))
+
+
 def get_best_features(important_features, number_of_features_to_keep, identifiers_for_suffixes_to_ignore, features_to_skip):
-    ''' gets best features among features that are not skipped. Encoding may lead to variable names
+    '''
+    Gets best features among features that are not skipped. Encoding may lead to variable names
     like 'feature=3' or 'feature_behavior_present'. identifiers_for_suffixes_to_ignore is a list
     of strings. If any of these strings is contained in a feature name, function will ignore that string
-    and any suffix following it '''
+    and any suffix following it.
+
+    Given the output of get_important_features(), returns the n best features to keep,
+    ignoring anything after a certain suffix char in the feature name, and excluding certain features
+    '''
 
     candidate_features = [x[0] for x in important_features]
 
     #trim everything after 'suffix_to_ignore' in every feature
     for string_for_suffix_to_ignore in identifiers_for_suffixes_to_ignore:
         candidate_features = [x.split(string_for_suffix_to_ignore)[0] for x in candidate_features]
-    
+
     #skip features to skip
     candidate_features = [x for x in candidate_features if x not in features_to_skip]
-    
+
     #dedup
     candidate_features = dedup_list(candidate_features)
-  
+
     #return top N candidate features
     return candidate_features[0:number_of_features_to_keep]
 
+
 def get_modeled_results(model, X, dunno_range):
-    ''' Helper function to extract modeled results for
-    all_data_model_withAlternates function below '''
+    '''
+    Helper function to extract modeled results for
+    all_data_model_withAlternates function below
+    '''
     y_predicted_without_dunno = model.predict(X)
     y_predicted_probs = model.predict_proba(X)
     y_predicted_with_dunno = np.array(y_predicted_without_dunno, copy=True)
@@ -932,26 +797,24 @@ def get_modeled_results(model, X, dunno_range):
     return y_predicted_without_dunno, y_predicted_with_dunno, y_predicted_probs
 
 
-import collections
-
 def all_data_model_withAlternates(dataset, feature_columns, feature_encoding_map, target_column, sample_weight, dunno_range, alternate_models, model_function, **model_parameters ):
     ''' Like all_data_model below, but modified to support the comparison with many alternate models '''
 
     X,y,features = prepare_data_for_modeling(dataset, feature_columns, feature_encoding_map, target_column)
-    
+
     model = model_function(**model_parameters)
     model.fit(X=X, y=y, sample_weight=sample_weight.values)#.tolist())
-    
+
     y_predicted_without_dunno = model.predict(X)
-    y_predicted_probs = model.predict_proba(X) 
-    
-    ### These new modeled results here:
+    y_predicted_probs = model.predict_proba(X)
+
+    # These new modeled results here:
     y_predicted_without_dunno, y_predicted_with_dunno, y_predicted_probs = get_modeled_results(model, X, dunno_range)
     model_results = {'y_predicted_without_dunno': y_predicted_without_dunno,
             'y_predicted_with_dunno': y_predicted_with_dunno,
             'y_predicted_probs': y_predicted_probs}
 
-    ### Now compare with older modeled results:
+    # Now compare with older modeled results:
     alt_model_results = collections.OrderedDict()
     for alt_model_info in alternate_models:
         alt_model = alt_model_info['model']
@@ -963,34 +826,35 @@ def all_data_model_withAlternates(dataset, feature_columns, feature_encoding_map
     return model, features, model_results, alt_model_results
 
 
-#trains a model using the entire dataset passed
 def all_data_model(dataset, feature_columns, feature_encoding_map, target_column, sample_weight, dunno_range, model_function, **model_parameters):
-
+    '''
+    Trains a model using the entire dataset passed
+    '''
 
     X,y,features = prepare_data_for_modeling(dataset, feature_columns, feature_encoding_map, target_column)
-    
+
     model = model_function(**model_parameters)
     if (sample_weight is not None):
     	model.fit(X=X, y=y, sample_weight=sample_weight.values)
     else:
     	model.fit(X=X, y=y)
-    
+
     y_predicted_without_dunno = model.predict(X)
-    y_predicted_probs = model.predict_proba(X) 
-    
+    y_predicted_probs = model.predict_proba(X)
 
     #replace predicted class with "dunno" class where appropriate
     y_predicted_with_dunno = np.array(y_predicted_without_dunno, copy=True)
     if dunno_range:
-        for i in range(0,len(y_predicted_with_dunno)):  
+        for i in range(0,len(y_predicted_with_dunno)):
             if (dunno_range[0] < y_predicted_probs[i][0] < dunno_range[1]):
                 y_predicted_with_dunno[i] = "dunno"
 
-
     return model, features, y_predicted_without_dunno, y_predicted_with_dunno, y_predicted_probs
 
+
 def get_stratified_labeled_KFolds(myDF, n_folds, target_column='diagnosis', groupKey=None):
-    ''' Mixes the functionality of stratified k-fold and labeled k-fold
+    '''
+    Mixes the functionality of stratified k-fold and labeled k-fold
     Will split into n folds with approximately equal amounts of each dignosis.
     Groups, as defined by rows with common values of groupKey, will be preserved when
     doing this. If groupKey is left as None this functionality is ignored
@@ -998,44 +862,43 @@ def get_stratified_labeled_KFolds(myDF, n_folds, target_column='diagnosis', grou
 
     Returns: an n-element list of training groups and an n-element list of validate
     groups. These groups are each lists of positions of the rows that should be selected
-    in that particular fold '''
+    in that particular fold
+    '''
 
     #myDF[target_column+'encoding'] = myDF[target_column].apply(lambda x : 1. if x == 'autism' else 0.)
     if groupKey is None:
-        ### no grouping to do
+        # no grouping to do
         avgByGroupDF = myDF
-        #valsForFolding = myDF[target_column+'encoding'].values
-        #### This just reduces to the non labeled KFold case
+        # This just reduces to the non labeled KFold case
         valsForFolding = myDF[target_column].values
     else:
-        #avgByGroupDF = myDF.groupby(groupKey).apply(np.mean)
-        #valsForFolding = avgByGroupDF[target_column+'encoding'].values
-        
-        #### If more than one row is in group, hopefully they all have the same
-        #### value of the target column. If not then take the most common value
-        #### (mode) as the one to use for the group.
-        #### Note: the [0][0] is actually needed to retrieve the mode from
-        #### the weird object that scipy stats returns
+        # If more than one row is in group, hopefully they all have the same
+        # value of the target column. If not then take the most common value
+        # (mode) as the one to use for the group.
+        # Note: the [0][0] is actually needed to retrieve the mode from
+        # the weird object that scipy stats returns
         avgByGroupDF = myDF.groupby(groupKey).agg(lambda x: stats.mode(x)[0][0])
         valsForFolding = avgByGroupDF[target_column].values
+
     cross_validation_folds = cross_validation.StratifiedKFold(n_folds=n_folds, y=valsForFolding, shuffle=True)
-    #print 'cross validation folds: ', cross_validation_folds
+    logger.debug("cross validation folds: %s" % cross_validation_folds)
 
     trainingGroups, validateGroups = [], []
 
-    ### Cross validation folds tell us the numpy row index values (*not the pandas index*)
-    ### for the training and validation data for each fold 
-    ### of the rows in the underlying 2d numpy array of the avgByGroupDF dataframe
-    ### .... next need to convert this back to the assocaited numpy index values for the 
-    ### non-grouped dataframe (myDF)
-    ### If not running with groups then avgByGroupDF is the same as myDF so 
-    ### this will just return the original values
+    # Cross validation folds tell us the numpy row index values (*not the pandas index*)
+    # for the training and validation data for each fold
+    # of the rows in the underlying 2d numpy array of the avgByGroupDF dataframe
+    # .... next need to convert this back to the assocaited numpy index values for the
+    # non-grouped dataframe (myDF)
+    # If not running with groups then avgByGroupDF is the same as myDF so
+    # this will just return the original values
     for train,validate in cross_validation_folds:
 
-        if groupKey is None:   ### no grouping, so no need to map back to original DF
+        if groupKey is None:   # no grouping, so no need to map back to original DF
             trainingGroups.append(train)
             validateGroups.append(validate)
-        else:   ### Need to map backto original DF
+        else:
+            # Need to map backto original DF
             trainingIDs = avgByGroupDF.index.values[train]
             validateIDs = avgByGroupDF.index.values[validate]
             origTrainingPositions = np.where(myDF[groupKey].isin(trainingIDs) == True)[0]
@@ -1045,16 +908,17 @@ def get_stratified_labeled_KFolds(myDF, n_folds, target_column='diagnosis', grou
 
     return trainingGroups, validateGroups
 
-#### New:
+
 def cross_validate_model(dataset, sample_weights, feature_columns, feature_encoding_map,
         target_column, dunno_range, n_folds, outcome_classes, outcome_class_priors, model_function,
         groupid=None, validation_weights=None, **model_parameters):
-    ''' sample_weights is for the actual training.
+    '''
+    sample_weights is for the actual training.
 
-    validation_weights is optional in case you want certain events to carry more importance in the 
-    cross validation (need not match sample_weights) '''
+    validation_weights is optional in case you want certain events to carry more importance in the
+    cross validation (need not match sample_weights)
+    '''
 
-    #we will return this
     metrics = {'fold_metrics':[], 'fold_important_features':[], 'overall_metrics':[]}
     df_to_use = cp.deepcopy(dataset)
     if sample_weights is not None:
@@ -1063,15 +927,10 @@ def cross_validate_model(dataset, sample_weights, feature_columns, feature_encod
     X,y,features = prepare_data_for_modeling(dataset, feature_columns, feature_encoding_map, target_column)
     metrics['features'] = features
 
-    
-    #prepare the dataset for modeling
-    #X,y,features = prepare_data_for_modeling(dataset, feature_columns, feature_encoding_map, target_column)
-
-    #split the dataset into n_folds cross validation folds
-    #cross_validation_folds = cross_validation.StratifiedKFold(n_folds=n_folds, y=df_to_use[target_column].values, shuffle=True)
+    # split the dataset into n_folds cross validation folds
     trainPositionsGroups, validatePositionsGroups = get_stratified_labeled_KFolds(df_to_use, n_folds=n_folds, target_column=target_column, groupKey=groupid)
 
-    #these are going to be overall prediction lists across folds
+    # these are going to be overall prediction lists across folds
     overall_y_real = []
     overall_y_predicted_without_dunno = []
     overall_y_predicted_with_dunno = []
@@ -1080,7 +939,7 @@ def cross_validate_model(dataset, sample_weights, feature_columns, feature_encod
 
     #indices_with_correct_Xvalid_results = np.array([])
     correctly_predicted_sample_indices = np.array([])
-    
+
     #handle folds one at  at ime
     fold_num = 0
     for trainPositions, validatePositions in zip(trainPositionsGroups, validatePositionsGroups):
@@ -1093,36 +952,35 @@ def cross_validate_model(dataset, sample_weights, feature_columns, feature_encod
         sample_weight_train = sample_weights.iloc[trainPositions]
         weights_validate = None if validation_weights is None else validation_weights.iloc[validatePositions]
 
-        
         model = model_function(**model_parameters)
         if sample_weights is not None:
             model.fit(X=X_train, y=y_train, sample_weight=sample_weight_train.values)
         else:
             model.fit(X=X_train, y=y_train)
-        
+
         y_predicted_without_dunno = model.predict(X=X_validate)
         y_predicted_probs = model.predict_proba(X=X_validate)
 
         #replace predicted class with "dunno" class where appropriate
         y_predicted_with_dunno = np.array(y_predicted_without_dunno, copy=True)
         if dunno_range:
-            for i in range(0,len(y_predicted_with_dunno)):  
+            for i in range(0,len(y_predicted_with_dunno)):
                 if (dunno_range[0] < y_predicted_probs[i][0] < dunno_range[1]):
                     y_predicted_with_dunno[i] = "dunno"
-         
-        #maintain overall prediction lists across folds   
+
+        #maintain overall prediction lists across folds
         overall_y_real.extend(y_validate.values)
         overall_y_predicted_without_dunno.extend(y_predicted_without_dunno)
         overall_y_predicted_with_dunno.extend(y_predicted_with_dunno)
         overall_y_predicted_probs.extend(y_predicted_probs)
         if weights_validate is not None:
             overall_validation_weights.extend(weights_validate)
-        
+
         values_match = y_validate == y_predicted_without_dunno
         indices_that_match = values_match[values_match==True].index
 
         correctly_predicted_sample_indices = np.concatenate([correctly_predicted_sample_indices, indices_that_match])
-        
+
         #log metrics for this fold
         metrics['fold_metrics'].append( get_classifier_performance_metrics(outcome_classes, outcome_class_priors, y_validate, y_predicted_without_dunno, y_predicted_with_dunno, y_predicted_probs, weights_validate) )
         metrics['fold_important_features'].append ( get_important_features(model, features, 0.01) )
@@ -1132,17 +990,18 @@ def cross_validate_model(dataset, sample_weights, feature_columns, feature_encod
     validation_weights_arr = None if overall_validation_weights is None else np.array(overall_validation_weights)
     metrics['overall_metrics'] = get_classifier_performance_metrics(outcome_classes, outcome_class_priors, np.array(overall_y_real), np.array(overall_y_predicted_without_dunno), np.array(overall_y_predicted_with_dunno), np.array(overall_y_predicted_probs), validation_weights_arr)
     metrics['correctly_predicted_sample_indices'] = correctly_predicted_sample_indices
-    
 
     return metrics
 
-#cross_validates a model using stratified K-fold  
-#uses a special 'addon' group [here hardcoded to 4 yearolds] for training only and not for validation
+
 def cross_validate_model_with_addon(dataset, sample_weights, feature_columns, feature_encoding_map, target_column,  dunno_range, n_folds, outcome_classes, outcome_class_priors, model_function, validation_weights=None, **model_parameters):
-	
-    #we will return this
+    '''
+    Cross_validates a model using stratified K-fold
+    Uses a special 'addon' group [here hardcoded to 4 yearolds] for training only and not for validation
+    '''
+
     metrics = {'fold_metrics':[], 'fold_important_features':[], 'overall_metrics':[]}
-    
+
     #prepare the dataset for modeling
     X,y,features = prepare_data_for_modeling(dataset, feature_columns, feature_encoding_map, target_column)
 
@@ -1154,7 +1013,7 @@ def cross_validate_model_with_addon(dataset, sample_weights, feature_columns, fe
     y_addon_training = y[np.array(dataset.age_years==4)]
     sample_weights_main = sample_weights[dataset.age_years<=3]
     sample_weights_addon_training = sample_weights[dataset.age_years==4]
-           
+
     #split the main part into n_folds cross validation folds
     cross_validation_folds = cross_validation.StratifiedKFold(n_folds=n_folds, y=y_main, shuffle=True)
 
@@ -1164,10 +1023,9 @@ def cross_validate_model_with_addon(dataset, sample_weights, feature_columns, fe
     overall_y_predicted_with_dunno = []
     overall_y_predicted_probs = []
     overall_validation_weights = None if validation_weights is None else []
-    
+
     #handle folds one at  at ime
     for train,validate in cross_validation_folds:
-    
         #every training fold consists of the training part of the main dataset plus the entire addon set
         X_main_training = X_main.iloc[train]
         X_train = np.append(X_main_training,X_addon_training, axis=0)
@@ -1175,63 +1033,62 @@ def cross_validate_model_with_addon(dataset, sample_weights, feature_columns, fe
         y_train = np.append(y_main_training,y_addon_training)
         sample_weights_main_training = sample_weights_main.iloc[train]
         sample_weights_train = sample_weights_main_training.append(sample_weights_addon_training)
-     
+
         #every validation fold consists of the validation part of the main dataset
         X_validate = X_main.iloc[validate]
         y_validate = pd.Series(y_main).iloc[validate]
         weights_validate = None if validation_weights is None else weights_validate_main.iloc[validate]
         assert weights_validate is None or len(X_validate.index) == len(weights_validate)
         assert weights_validate is None or len(weights_validate) == len(validate)
-        
 
         #fit a model for this fold
         model = model_function(**model_parameters)
         model.fit(X=X_train, y=y_train, sample_weight=sample_weights_train.values)
-        
+
         y_predicted_without_dunno = model.predict(X=X_validate)
         y_predicted_probs = model.predict_proba(X=X_validate)
 
         #replace predicted class with "dunno" class where appropriate
         y_predicted_with_dunno = np.array(y_predicted_without_dunno, copy=True)
         if dunno_range:
-            for i in range(0,len(y_predicted_with_dunno)):  
+            for i in range(0,len(y_predicted_with_dunno)):
                 if (dunno_range[0] < y_predicted_probs[i][0] < dunno_range[1]):
                     y_predicted_with_dunno[i] = "dunno"
-         
-        #maintain overall prediction lists across folds   
+
+        #maintain overall prediction lists across folds
         overall_y_real.extend(y_validate)
         overall_y_predicted_without_dunno.extend(y_predicted_without_dunno)
         overall_y_predicted_with_dunno.extend(y_predicted_with_dunno)
         overall_y_predicted_probs.extend(y_predicted_probs)
         if weights_validate is not None:
             overall_validation_weights.extend(weights_validate)
-        
+
         #log metrics for this fold
         metrics['fold_metrics'].append( get_classifier_performance_metrics(outcome_classes, outcome_class_priors, y_validate, y_predicted_without_dunno, y_predicted_with_dunno, y_predicted_probs, weights_validate) )
         metrics['fold_important_features'].append ( get_important_features(model, features, 0.01) )
 
-
     #log overall metrics across folds
     validation_weights_arr = None if overall_validation_weights is None else np.array(overall_validation_weights)
     metrics['overall_metrics'] = get_classifier_performance_metrics(outcome_classes, outcome_class_priors, np.array(overall_y_real), np.array(overall_y_predicted_without_dunno), np.array(overall_y_predicted_with_dunno), np.array(overall_y_predicted_probs), validation_weights_arr)
-    
+
     return metrics
 
 
-
-
-#performs general purpose bootstrapping on a dataset applying given function each time and aaverageing reported metrics back to caller
 def bootstrap(dataset, number_of_tries, sampling_function_per_try, ml_function_per_try, return_errs=False, verbose=False ):
+    '''
+    Performs general purpose bootstrapping on a dataset applying given function each time and aaverageing reported metrics back to caller
+    '''
+
     metrics_per_try = []
     for try_index in range(0, number_of_tries):
         if verbose:
-            print 'On try_index ', try_index, ' out of ', number_of_tries
+            logger.info("On try_index %d out of %d" % (try_index, number_of_tries))
         #sample dataset before every try
         dataset_for_this_try = sampling_function_per_try(dataset)
-        
+
         #run the ml function and collect reported metrics
         metrics_per_try.append( ml_function_per_try(dataset_for_this_try) )
-        
+
     #average out the metrics in the (nested) metrics structures that we got back from every try
     if return_errs:
         average_metrics, average_metrics_err = deep_average_with_stat_errs(metrics_per_try)
@@ -1241,36 +1098,50 @@ def bootstrap(dataset, number_of_tries, sampling_function_per_try, ml_function_p
         return average_metrics
     return average_metrics
 
-#given a list of instances of a nested structure of metrics, return a similar structure with the averages across instances filled in   
+
 def deep_average(list_of_similar_things):
-     first_thing = list_of_similar_things[0]
-     if type(first_thing) is int or type(first_thing) is float or type(first_thing) is np.float64:
+    '''
+    Given a list of instances of a nested structure of metrics, return a similar structure with the averages across instances filled in
+    '''
+
+    first_thing = list_of_similar_things[0]
+
+    if type(first_thing) is int or type(first_thing) is float or type(first_thing) is np.float64:
         average = np.average(list_of_similar_things)
         return average
-     if type(first_thing) is list:
+
+    if type(first_thing) is list:
         average = []
         for index in range(0,len(first_thing)):
-            average.append( deep_average([x[index] for x in list_of_similar_things]) ) 
+            average.append( deep_average([x[index] for x in list_of_similar_things]) )
         return average
-     if type(first_thing) is np.ndarray:
-         return None
-     if type(first_thing) is dict:
+
+    if type(first_thing) is np.ndarray:
+        return None
+
+    if type(first_thing) is dict:
         average = {}
         for key in first_thing.keys():
             average[key] = deep_average([x[key] for x in list_of_similar_things])
         return average
-     if type(first_thing) is type(None):
+
+    if type(first_thing) is type(None):
         return None
-     raise TypeError("found type "+str(type(first_thing))+": "+str(list_of_similar_things) )
+
+    raise TypeError("found type "+str(type(first_thing))+": "+str(list_of_similar_things) )
+
 
 def deep_average_with_stat_errs(list_of_similar_things):
-    ''' Like for deep_average function, but track statistical errors of each quantity as well
-    (applies central limit theorem, so only accurate if significant number of bootstraps applied) '''
+    '''
+    Like for deep_average function, but track statistical errors of each quantity as well
+    (applies central limit theorem, so only accurate if significant number of bootstraps applied)
+    '''
     first_thing = list_of_similar_things[0]
     if type(first_thing) is int or type(first_thing) is float or type(first_thing) is np.float64:
        average = np.average(list_of_similar_things)
        average_err = np.std(list_of_similar_things) / len(list_of_similar_things)
        return average, average_err
+
     if type(first_thing) is list:
        averages = []
        average_errs = []
@@ -1279,8 +1150,10 @@ def deep_average_with_stat_errs(list_of_similar_things):
            averages.append(this_average)
            average_errs.append(this_average_err)
        return averages, average_errs
+
     if type(first_thing) is np.ndarray:
         return None, None
+
     if type(first_thing) is dict:
        averages = {}
        average_errs = {}
@@ -1289,12 +1162,13 @@ def deep_average_with_stat_errs(list_of_similar_things):
            averages[key] = this_average
            average_errs[key] = this_average_err
        return averages, average_errs
+
     if type(first_thing) is type(None):
        return None, None
+
     raise TypeError("found type "+str(type(first_thing))+": "+str(list_of_similar_things) )
 
 
-#SAVING AND LOADING PREDICTIVE MODELS
 def save_model( model, class_names, dunno_range, features, feature_columns, feature_encoding_map, outcome_column, data_prep_function, apply_function, filename):
 
     data_prep_function_string = marshal.dumps(data_prep_function.func_code)
@@ -1302,6 +1176,7 @@ def save_model( model, class_names, dunno_range, features, feature_columns, feat
 
     pickle.dump( {'model':model, 'class_names': class_names, 'dunno_range':dunno_range, 'features':features, 'feature_columns':feature_columns,
 		'feature_encoding_map': feature_encoding_map, 'target':outcome_column, 'data_prep_function':data_prep_function_string, 'apply_function':apply_function_string}, open( filename, "wb" ) )
+
 
 def load_model( filename):
     model_structure = pickle.load(open( filename, "rb" ) )
@@ -1313,81 +1188,93 @@ def load_model( filename):
 
     return model_structure
 
-#given a bunch of variables, each in a list of possible ranges, returns tuples for every possible combination of variable values
-#   for example, given [ ['a','b'], [1,2], ['x','y'] ]
-#   it returns [ ('a',1,'x'), ('a',1,'y'), ('a',2,'x'), ('a',2,'y'), ('b',1,'x') ... ]
+
 def get_combinations(list_of_lists):
+    '''
+    Given a bunch of variables, each in a list of possible ranges, returns tuples for every possible combination of variable values
+    for example, given [ ['a','b'], [1,2], ['x','y'] ]
+    it returns [ ('a',1,'x'), ('a',1,'y'), ('a',2,'x'), ('a',2,'y'), ('b',1,'x') ... ]
+    '''
     return list(itertools.product(*list_of_lists))
 
-#performs a grid search over a modeling_function using different param_combinations each time, and collecting the outputs of a reporting_fuction in successive runs
+
 def grid_search(modeling_function, param_combinations, reporting_function, verbose=False):
+    '''
+    Performs a grid search over a modeling_function using different param_combinations each time, and collecting the outputs of a reporting_fuction in successive runs
+    '''
     final_report = []
     n_total_combs = len(param_combinations)
     n_so_far = 0
     for param_combination in param_combinations:
         n_so_far += 1
         if verbose:
-            print 'Starting grid search parameter combination ', param_combination
-            print 'This is combination ', n_so_far, ' of ', n_total_combs
-        metrics = modeling_function(param_combination)	
+            logger.info("Starting grid search parameter combination" % str(param_combination))
+            logger.info("This is combination %d of %d" % (n_so_far, n_total_combs))
+        metrics = modeling_function(param_combination)
         report = list(param_combination)
         report.extend( reporting_function(param_combination, metrics) )
         final_report.append(report)
     return final_report
-    
-        
-#H(Y) = -sigmaOveri(P(Y=yi)*log2(P(Y=yi)))
+
+
 def entropy(categoricalVariableAsList):
+    '''
+    Calculate entropy:
+    H(Y) = -sigmaOveri(P(Y=yi)*log2(P(Y=yi)))
+    '''
+
     probabilityDistributionOfY = pd.Series(categoricalVariableAsList).value_counts(normalize=True)
     entropy = -1.0*sum([p*math.log(p, 2) for p in probabilityDistributionOfY])
+
     return entropy
 
-    #let's test it
-    #print entropy(['ab', 'b', 'c'])
 
-
-#H(Y|X) = sigmaOverj(P(X=xj)*H(Y|X=xj))
 def conditionalEntropy(YasList, XasList):
-    pairs = zip(XasList, YasList)   
+    '''
+    Calculate conditional entropy:
+    H(Y|X) = sigmaOverj(P(X=xj)*H(Y|X=xj))
+    '''
+
+    pairs = zip(XasList, YasList)
     probabilityDistributionOfX = pd.Series(XasList).value_counts(normalize=True)
     conditionalEntropy = 0.0
+
     for xj in np.unique(XasList):
         conditionalEntropy += probabilityDistributionOfX[xj]*entropy([item for item in pairs if item[0]==xj])
+
     return conditionalEntropy
 
-    #let's test it
-    #print conditionalEntropy(['1', '0', '1', '0', '1', '1'], ['a', 'a', 'b', 'b', 'b'])   
-    
-    
-#IG(Y|X) = H(Y) - H(Y|X)
+
 def informationGain(YasList, XasList):
+    '''
+    Calculate information gain:
+    IG(Y|X) = H(Y) - H(Y|X)
+    '''
     return entropy(YasList) - conditionalEntropy(YasList, XasList)
-
-
     #let's test it
     #X = ['a', 'a', 'b', 'b', 'b', 'b']
     #Y = ['0', '0', '1', '1', '1','0' ]
     #print entropy(Y)
     #print conditionalEntropy(Y, X)
-    #print informationGain(Y, X )   
-    
+    #print informationGain(Y, X )
+
+
 def computeCorrelationUsingInfoGain(dataframe, targetName, featureName, missingValueLabel='missing'):
-    
+
     #filter away rows with missing target of feature values
     df = dataframe[(dataframe[targetName]!=missingValueLabel)&(dataframe[featureName]!=missingValueLabel)]
-    
+
     target = df[targetName]
     feature = df[featureName]
-    
+
     #print entropy(target)
     #print conditionalEntropy(target, feature)
-    #print informationGain(target, feature) 
-    
-    return informationGain(target, feature)
- 
-    #let's test it
-    #computeCorrelationUsingInfoGain(df, 'target', 'q58')    
+    #print informationGain(target, feature)
 
+    return informationGain(target, feature)
+
+    #let's test it
+    #computeCorrelationUsingInfoGain(df, 'target', 'q58')
 
 
 def getPrecisionDegradationFactors(metrics_worse, metrics_better, debug=False):
@@ -1400,15 +1287,17 @@ def getPrecisionDegradationFactors(metrics_worse, metrics_better, debug=False):
                                 'autism_precision': precisions_worse['autism'] / precisions_better['autism'],
                                 'not_recall': recalls_worse['not'] / recalls_better['not'],
                                 'not_precision': precisions_worse['not'] / precisions_better['not']}
-    if debug:
-        print 'metrics_worse: ', metrics_worse
-        print 'metrics_better: ', metrics_better
-        print 'precision_degradation_factors: ', precision_degradation_factors
+
+    logger.debug("metrics_worse: %s", str(metrics_worse))
+    logger.debug("metrics_better: %s", str(metrics_better))
+    logger.debug("precision_degradation_factors: %s", str(precision_degradation_factors))
+
     return precision_degradation_factors
 
 
 def injectLoss(inputDF, lossSpecifications, missingValue=999, mode='duplicate', probKey='probability', scaleToOverwrite=False, exactMatch=False):
-    ''' Function to inject loss simulating unknowable results in an imperfect survey
+    '''
+    Function to inject loss simulating unknowable results in an imperfect survey
 
     Example epected input format:
         lossSpecifications = {'desc': '10pLoss, 'instructions': [{'qType': 'ados2_a', 'probability': 0.1},
@@ -1423,7 +1312,7 @@ def injectLoss(inputDF, lossSpecifications, missingValue=999, mode='duplicate', 
 
     mode can be 'duplicate' or 'overwrite'
     ... duplicate means to make a copy of the row with the values missing and append it
-    ...... If scaleToOverwrite is set to True then the probability will be scaled up so that 
+    ...... If scaleToOverwrite is set to True then the probability will be scaled up so that
     ...... The final number of missing values is the same as expected from the overwrite option
     .......... Caveat: obviously since the max probability is 1.0 no probability value over 0.5
     .......... can work with this option unless multiple copies of the missing events are used
@@ -1431,14 +1320,15 @@ def injectLoss(inputDF, lossSpecifications, missingValue=999, mode='duplicate', 
     .......... are specified in the instructions.
     ... overwrite means overwrite the current row with the new one that has the missing values
 
-    Returns data frame rebuilt with appropriate missing values '''
+    Returns data frame rebuilt with appropriate missing values
+    '''
 
     desc = lossSpecifications['desc']
     instructions = lossSpecifications['instructions']
     if instructions is None:
         return inputDF
 
-    #### What is probability of having a row lost??
+    ## What is probability of having a row lost??
     pGivenRowNotLost = 1.
     for instruct in instructions:
         pGivenRowNotLost *= 1. - max(instruct[probKey], 0.9999999)
@@ -1453,76 +1343,77 @@ def injectLoss(inputDF, lossSpecifications, missingValue=999, mode='duplicate', 
     def markColsForReset(row, colsToReset):
         return row['colsToReset'].append(colsToReset)
 
-    #### Loop over the instructions for loss types to apply
+    ## Loop over the instructions for loss types to apply
     for instr in instructions:
         instrPLoss = instr[probKey]
 
         if scaleToOverwrite:
-            ### Correct for the duplication factor
+            # Correct for the duplication factor
             assert mode == 'duplicate'
             instrPLoss = instrPLoss / (1. - min(pGivenRowLost, 0.5))
             if instrPLoss > 1.:
-                print 'Warning, hit physical ceiling'
-                instrPLoss = 1.   #### hit physical ceiling
-            #### Now instrPLoss has been scaled to 
-            #### value that will make the output
-            #### missing rate equal this probability
-            #### after non-missing duplicates are factored in
+                logger.warning('Warning, hit physical ceiling')
+                instrPLoss = 1.   ## hit physical ceiling
+            ## Now instrPLoss has been scaled to
+            ## value that will make the output
+            ## missing rate equal this probability
+            ## after non-missing duplicates are factored in
         #applyLossToTheseCols = [ele for ele in inputDF.columns if instr['qType'] in ele and instr['except'] not in ele]
         matchCheck = lambda x : instr['qType'] in ele
         if exactMatch:
               matchCheck = lambda x : instr['qType'] == ele
 
-        if 'except' in instr.keys(): applyLossToTheseCols = [ele for ele in inputDF.columns if matchCheck(ele) and instr['except'] not in ele]
-        else: applyLossToTheseCols = [ele for ele in inputDF.columns if matchCheck(ele)]
+        if 'except' in instr.keys():
+            applyLossToTheseCols = [ele for ele in inputDF.columns if matchCheck(ele) and instr['except'] not in ele]
+        else:
+            applyLossToTheseCols = [ele for ele in inputDF.columns if matchCheck(ele)]
 
-        ### Check that none of the new columns have already had instructions
+        # Check that none of the new columns have already had instructions
         overlapCols = np.intersect1d(colsAlreadyDone, applyLossToTheseCols)
         if len(overlapCols) != 0:
-            print 'Error, ', overlapCols, ' have conflicting instructions. Abort.'
+            logger.error("Error, %s have conflicting instructions. Abort." % str(overlapCols))
             raise ValueError
+
         colsAlreadyDone += applyLossToTheseCols
 
-        #### get which rows need to have this subset of columns reset
+        ## get which rows need to have this subset of columns reset
         rowsToReset = (np.random.rand(nRows) < instrPLoss)
-        #print 'rowsToReset: ', rowsToReset
 
-        #### expand the list of columns that do need a reset for each row:
+        ## expand the list of columns that do need a reset for each row:
         resetDF['colsToReset'] = [list(curContent) + applyLossToTheseCols if doThisRow else list(curContent)\
                   for curContent, doThisRow in zip(resetDF['colsToReset'].values, rowsToReset)]
 
-    #### Define the pandas operation that will do the reset
+    # Define the pandas operation that will do the reset
     def doResets(row):
         outRow = row
-        #print 'cols to reset: ', row['colsToReset']
         for key in row['colsToReset']:
-            #print 'missingValue: ', missingValue
             if type(missingValue) == str and missingValue == 'random':
                 randValToUse = int(5.*np.random.rand(1)[0])
                 outRow[key] = randValToUse
             else:
-                #print 'set outRow of ', key, ' to missing Value ', missingValue
                 outRow[key] = missingValue
         return outRow
 
-    ### inject some tracking information to enable reconstruction of original later
+    # inject some tracking information to enable reconstruction of original later
     resetDF['original_index'] = resetDF.index
     resetDF['status'] = ['original']*len(resetDF.index)
-    #### Now actually apply the resets
+
+    # Now actually apply the resets
     if mode == 'overwrite':
         outDF = resetDF.apply(doResets, axis=1)
 
     if mode == 'duplicate':
-        ### In this case we keep a copy of the original rows in the DF
+        # In this case we keep a copy of the original rows in the DF
         appendDF = resetDF[np.array([ele != [] for ele in resetDF['colsToReset']])]
         appendDF = appendDF.apply(doResets, axis=1)
         appendDF['status'] = ['duplicate']*len(appendDF.index)
         outDF = resetDF.append([appendDF], ignore_index=True)
-    #print 'outDF: ', outDF
+
     return outDF
 
+
 def inject_proportional_loss_when_presence_encoding(inputDF, outcome_key='outcome', instructions=None, missing_value='missing', prior_autism_frac=None, module=None, validation=True):
-    ''' 
+    '''
     instructions: if None will be filled with expected default values. Format should be
     a list of dictionaries where each entry tells the association of the feature (whether
     presence means autism, non-autism, or neutral). Example:
@@ -1532,8 +1423,8 @@ def inject_proportional_loss_when_presence_encoding(inputDF, outcome_key='outcom
     module : if you want to only inject in features of a given module then add this requirement
     Intended to inject loss for autism cases and not autism cases separately, with the goal of
     making it so that the non-presence of a feature is not used to make any important decisions in the
-    trees. 
-    
+    trees.
+
     To accomplish this, each feature is considered to be either one where the presence implies the child
     is more likely to be autistic, or less likely to be autistic. If more likely, then the absence of the feature
     is likely to be interpreted as a reduction in the autism probability. To compensate for this missing values
@@ -1541,7 +1432,7 @@ def inject_proportional_loss_when_presence_encoding(inputDF, outcome_key='outcom
 
 
     def get_frac_injection(no_presence_df, presence_df, outcome_key, presence_means, autism_scaling_factor):
-        #### How much do we need to inject to achieve balance in the non-presence category??
+        ## How much do we need to inject to achieve balance in the non-presence category??
         n_not_no_presence = float(len(no_presence_df[no_presence_df[outcome_key]=='not'].index))
         n_autism_no_presence = float(len(no_presence_df[no_presence_df[outcome_key]=='autism'].index))
         n_not_presence = float(len(presence_df[presence_df[outcome_key]=='not'].index))
@@ -1550,28 +1441,21 @@ def inject_proportional_loss_when_presence_encoding(inputDF, outcome_key='outcom
             n_autism_no_presence *= autism_scaling_factor
             n_autism_presence *= autism_scaling_factor
 
-
-        if presence_means == 'autism':   ### inject into autism to make frac as large as not in non-presence category
+        if presence_means == 'autism':
+            # inject into autism to make frac as large as not in non-presence category
             frac_injection = (n_not_no_presence -  n_autism_no_presence) / (n_autism_no_presence + n_autism_presence)
-            #if autism_scaling_factor is not None:  ### correct values to ensure balancing is to correct priors
-            #    #print 'Fraction to inject with full accounting for weighting is ', frac_injection
-            #    #print 'Injection will be before weighting to desired prior of ', prior_autism_frac, ', so roll this out'
-            #    frac_injection /= autism_scaling_factor
-            #    #print 'Corrected for weightings, frac_injection is ', frac_injection
-        elif presence_means == 'not':   ### inject into not to make frac as large as autism in non-presence category
+        elif presence_means == 'not':   # inject into not to make frac as large as autism in non-presence category
             frac_injection = (n_autism_no_presence - n_not_no_presence) / (n_not_no_presence + n_not_presence)
         else:
-            print 'type of injection = ', presence_means, ' not understood'
+            logging.error("type of injection = %s not understood" % str(presence_means))
             raise ValueError
 
-
         if frac_injection < 0:
-            print 'Warning: frac_injection < 0, meaning selection feature is not enriching correct outcome. Skip injection.'
+            logging.warning('Warning: frac_injection < 0, meaning selection feature is not enriching correct outcome. Skip injection.')
             return None
         else:
             return frac_injection
 
-    #print 'Let us try injecting proportional loss while presenec encoding'
     if instructions is None:
         instructions = [
             {'feature': 'ados1_a1', 'presence_means': 'not'},
@@ -1594,7 +1478,7 @@ def inject_proportional_loss_when_presence_encoding(inputDF, outcome_key='outcom
             {'feature': 'ados2_d4', 'presence_means': 'autism'},
             {'feature': 'ados2_e3', 'presence_means': 'autism'},
 
-        	#### v1 features
+        	## v1 features
             {'feature': 'ados1_a2', 'presence_means': 'not'},
             {'feature': 'ados1_b1', 'presence_means': 'autism'},
             {'feature': 'ados1_b2', 'presence_means': 'not'},
@@ -1607,21 +1491,19 @@ def inject_proportional_loss_when_presence_encoding(inputDF, outcome_key='outcom
             {'feature': 'ados2_b10', 'presence_means': 'not'},
         ]
 
-
     feature_columns = [instruction['feature'] for instruction in instructions if instruction['feature'] in inputDF.columns]
     feature_encoding_map = {feature: 'presence_of_behavior' for feature in feature_columns}
-    #print 'feature_columns: ', feature_columns
-    #print 'feature_encoding_map: ', feature_encoding_map
 
-    ### transform the data into presence encoded results
+    # transform the data into presence encoded results
     encoded_df, _, _ = prepare_data_for_modeling(inputDF, feature_columns, feature_encoding_map, target_column=outcome_key)
-    ### The columns will have a '_behavior_present' suffix. Remove this.
+
+    # The columns will have a '_behavior_present' suffix. Remove this.
     new_cols = [col[:-len('_behavior_present')] if col.endswith('_behavior_present') else col for col in encoded_df.columns]
     encoded_df.columns = new_cols
     encoded_df[outcome_key] = cp.deepcopy(inputDF[outcome_key])
 
     autism_prior_scaling_factor = None
-    if prior_autism_frac is not None:  ### correct values to ensure balancing is to correct priors
+    if prior_autism_frac is not None:  # correct values to ensure balancing is to correct priors
         if prior_autism_frac > 0.99999 or prior_autism_frac < 0.000001:
             print 'Error, prior_autism_frac: ', prior_autism_frac, ' not understood'
             raise ValueError
@@ -1629,30 +1511,25 @@ def inject_proportional_loss_when_presence_encoding(inputDF, outcome_key='outcom
         n_not_tot = float(len(inputDF.index) - n_autism_tot)
         autism_prior_scaling_factor = prior_autism_frac * n_not_tot / (n_autism_tot * (1. - prior_autism_frac))
 
-        #print 'prior_autism_frac of ', prior_autism_frac, ' is desired.'
-        #print 'Initial n_autism: ', n_autism_tot, ', n_not: ', n_not_tot
-        #print 'Scaling factor is ', autism_prior_scaling_factor
-
-    ### First determine what our loss instructions should be
+    # First determine what our loss instructions should be
     autism_loss_instructions = {'desc': 'autism_loss_instructions', 'instructions': []}
     not_loss_instructions = {'desc': 'not_loss_instructions', 'instructions': []}
     suspicious_features = []
     for instruct in instructions:
         feature = instruct['feature']
-        if module is not None:
-            if 'ados'+str(module) not in feature: continue
-        if feature not in encoded_df.columns:
-#            print 'Warning, feature ', feature, ' not understood in dataframe columns: ', encoded_df.columns
-#            print 'Skip it'
+        if (module is not None) and ('ados'+str(module) not in feature):
             continue
+
+        if feature not in encoded_df.columns:
+            continue
+
         presence_means = instruct['presence_means']
-        if presence_means == 'neutral': continue
+        if presence_means == 'neutral':
+            continue
         elif presence_means == 'autism':
-            ### May need to inject missing values into 'not' in order to achieve balance
+            # May need to inject missing values into 'not' in order to achieve balance
             no_presence_df = encoded_df[encoded_df[feature]==0][[feature, outcome_key]]
             presence_df = encoded_df[encoded_df[feature]==1][[feature, outcome_key]]
-            #n_not = float(len(no_presence_df[no_presence_df[outcome_key]=='not'].index))
-            #n_autism = float(len(no_presence_df[no_presence_df[outcome_key]=='autism'].index))
             needed_frac_injection = get_frac_injection(no_presence_df, presence_df, outcome_key, presence_means, autism_prior_scaling_factor)
             if needed_frac_injection is None:
                 suspicious_features.append(feature)
@@ -1662,7 +1539,7 @@ def inject_proportional_loss_when_presence_encoding(inputDF, outcome_key='outcom
                     suspicious_features.append(feature)
             #print 'for feature: ', feature, ', needed_frac_injection: ', needed_frac_injection
         elif presence_means == 'not':
-            ### May need to inject missing values into 'autism' in order to achieve balance
+            # May need to inject missing values into 'autism' in order to achieve balance
             no_presence_df = encoded_df[encoded_df[feature]==0][[feature, outcome_key]]
             presence_df = encoded_df[encoded_df[feature]==1][[feature, outcome_key]]
             needed_frac_injection = get_frac_injection(no_presence_df, presence_df, outcome_key, presence_means, autism_prior_scaling_factor)
@@ -1677,10 +1554,7 @@ def inject_proportional_loss_when_presence_encoding(inputDF, outcome_key='outcom
             print 'Error, instructions ', instruct, ' not understood. Abort.'
             return -1
 
-    ### Now apply our loss instructions
-    #print 'Got loss instructions for autism and not DFs separately'
-    #print 'autism instructions: ', autism_loss_instructions
-    #print 'not instructions: ', not_loss_instructions
+    # Now apply our loss instructions
     autism_df = inputDF[inputDF[outcome_key]=='autism']
     not_df = inputDF[inputDF[outcome_key]=='not']
     if len(autism_loss_instructions['instructions']) > 0:   ## apply our loss instructions
@@ -1690,20 +1564,20 @@ def inject_proportional_loss_when_presence_encoding(inputDF, outcome_key='outcom
         not_df = injectLoss(not_df, not_loss_instructions, missingValue=missing_value, mode='duplicate',
              probKey='probability', scaleToOverwrite=True, exactMatch=True)
 
-    ### Now merge the results and re-shuffle to avoid grouping by autism / not
+    # Now merge the results and re-shuffle to avoid grouping by autism / not
     output_df = autism_df.append([not_df], ignore_index=True)
     output_df = (output_df.reindex(np.random.permutation(output_df.index))).reset_index()
-
 
     if validation:
         do_proportional_injection_sanity_checks(encoded_df, output_df, instructions, feature_columns, suspicious_features, feature_encoding_map, outcome_key, autism_prior_scaling_factor, module)
 
     return output_df
 
+
 def do_proportional_injection_sanity_checks(encoded_df, output_df, instructions, feature_columns, suspicious_features, feature_encoding_map, outcome_key, autism_prior_scaling_factor, module):
     autism_scale_factor = 1. if autism_prior_scaling_factor is None else autism_prior_scaling_factor
 
-    ### sanity check results
+    # sanity check results
     out_encoded_df, _, _ = prepare_data_for_modeling(output_df, feature_columns, feature_encoding_map, target_column=outcome_key)
     new_cols = [col[:-len('_behavior_present')] if col.endswith('_behavior_present') else col for col in out_encoded_df.columns]
     out_encoded_df.columns = new_cols
@@ -1727,22 +1601,27 @@ def do_proportional_injection_sanity_checks(encoded_df, output_df, instructions,
             ('before_weighted', []),
             ('after_weighted', []),
     ])
+
     for instruct in instructions:
         feature = instruct['feature']
-        if module is not None:
-            if 'ados'+str(module) not in feature: continue
+        if (module is not None) and ('ados'+str(module) not in feature):
+            continue
 
         if feature not in encoded_df.columns:
             continue
+
         features.append(feature)
         presence_means.append(instruct['presence_means'])
         no_presence_df = encoded_df[encoded_df[feature]==0][[feature, outcome_key]]
         out_no_presence_df = out_encoded_df[out_encoded_df[feature]==0][[feature, outcome_key]]
 
-        print 'for instructions ', instruct, ', no_presence_df: ', no_presence_df
+        logger.info("For instructions %s, no_presence_df: %s" % (str(instruct), str(no_presence_df)))
+
         n_not = float(len(no_presence_df[no_presence_df[outcome_key]=='not'].index))
         n_autism = float(len(no_presence_df[no_presence_df[outcome_key]=='autism'].index))
-        print 'n_not: ', n_not, ', n_autism: ', n_autism
+
+        logger.info("n_not: %s, n_autism: %s" % (str(n_not), str(n_autism)))
+
         n_autism_weighted = autism_scale_factor*n_autism
         autism_frac = n_autism / (n_not + n_autism)
         autism_frac_weighted = n_autism_weighted / (n_autism_weighted + n_not)
@@ -1751,7 +1630,6 @@ def do_proportional_injection_sanity_checks(encoded_df, output_df, instructions,
         n_autism_out_weighted = autism_scale_factor*n_autism_out
         autism_out_frac = n_autism_out / (n_autism_out + n_not_out)
         autism_out_frac_weighted = n_autism_out_weighted / (n_autism_out_weighted + n_not_out)
-
 
         n_not_dict['before'].append(n_not)
         n_not_dict['after'].append(n_not_out)
@@ -1764,14 +1642,12 @@ def do_proportional_injection_sanity_checks(encoded_df, output_df, instructions,
         autism_frac_dict['after'].append(autism_out_frac)
         autism_frac_dict['after_weighted'].append(autism_out_frac_weighted)
 
-        #print 'For feature ', feature, ', no presence case input was n_not: ', n_not, ', n_autism: ', n_autism, ', weighted n_autism: ', (n_autism*autism_prior_scaling_factor)
-        #print 'And output case was n_not: ', n_not_out, ', autism: ', n_autism_out, ', scaled autism: ', (n_autism_out*autism_prior_scaling_factor)
     draw_sanity_overlays(n_not_dict, features, presence_means, suspicious_features, title='Number of not autism results', ylabel='Number of children when feature not present', ylims=None)
     draw_sanity_overlays(n_autism_dict, features, presence_means, suspicious_features, title='Number of autism results', ylabel='Number of children when feature not present', ylims=None)
     draw_sanity_overlays(autism_frac_dict, features, presence_means, suspicious_features, title='Autism frac results', ylabel='Autism fraction when feature not present', ylims=[0., 1.4], draw_comp_line=0.5)
 
+
 def draw_sanity_overlays(results_dict, feature_columns, presence_means, suspicious_features, title, ylabel, ylims, draw_comp_line=None):
-    import matplotlib.pyplot as plt
     plt.figure(figsize=(12,8))
     plt.grid(True)
     colors = ['red', 'blue', 'black', 'purple']
@@ -1781,7 +1657,6 @@ def draw_sanity_overlays(results_dict, feature_columns, presence_means, suspicio
     for (leg_label, yVals), color in zip(results_dict.iteritems(), colors):
         xWidths = 1. / (n_plots + 2.)
         these_xVals = np.arange(len(feature_columns))+(float(plot_num)*xWidths)
-        #print 'do xVals: ', these_xVals, ', yVals: ', yVals, ', color: ', color, ', leg_label: ', leg_label
         plt.bar(these_xVals, yVals, xWidths, color=color, label=leg_label)
         plot_num+=1
 
@@ -1806,25 +1681,27 @@ def draw_sanity_overlays(results_dict, feature_columns, presence_means, suspicio
         else:
             assert 0
 
+    logger.info("suspicious_features: %s" % str(suspicious_features))
 
-    print 'suspicious_features: ', suspicious_features
     for xtick_label in plt.gca().get_xticklabels():
         if xtick_label.get_text() in not_features:
             xtick_label.set_color('red')
         if xtick_label.get_text() in suspicious_features:
-            print 'set label ', xtick_label.get_text(), ' to bold'
+            logger.info("Set label %s to bold" % xtick_label.get_text())
             xtick_label.set_weight('bold')
+
     plt.ylabel(ylabel, fontsize=20)
     plt.title(title, fontsize=22)
     plt.show()
 
 
 def reverse_one_hot_encoding(dataset, input_columns, fallback_value='Unknown non-ASD', override_column=None):
-    ''' Converts many columns that encode a feature with 1/0 values into a single
+    '''
+    Converts many columns that encode a feature with 1/0 values into a single
     column that reports one of these features as being present (needed for machine learning target).
     In the case where more than one of the input columns has a non zero value the first one
     in the list that is non zero will have priority.
-    
+
     input_columns is a list of columns '1' or '0' values to combine.
     fallback_value is what should be specified if none of the input columns have a '1'
 
@@ -1832,7 +1709,7 @@ def reverse_one_hot_encoding(dataset, input_columns, fallback_value='Unknown non
     else in this function
 
 	An example of using this function is a situation where you have many variables encoding a condition
-	as a 0 or 1 (for example, does child have OCD, does child have ADHD, does child have autism, ...), and you want to 
+	as a 0 or 1 (for example, does child have OCD, does child have ADHD, does child have autism, ...), and you want to
 	combine into a single column that summarizes what the most important of those conditions is (if
 	any are non-zero), where importance is defined by the order of the columns. It is suggested, however, that
 	you make the input columns non-overlapping where possible (for example, ['Neurotypical', 'Any Delay not ASD not ADHD', 'ADD/ADHD/OCD not ASD'])
@@ -1853,17 +1730,19 @@ def reverse_one_hot_encoding(dataset, input_columns, fallback_value='Unknown non
         if combined_value is None:
             combined_value=fallback_value
         return combined_value
+
     columns_for_combination = input_columns
     if override_column is not None:
         columns_for_combination.append(override_column)
-    combined_series = dataset[columns_for_combination].apply(pick_combined_value_for_row, axis=1)
-    return combined_series
+
+    return dataset[columns_for_combination].apply(pick_combined_value_for_row, axis=1)
 
 
 def get_general_diagnoses_from_specific_diagnoses(diagnosis_df, diagnosis_categories_mapping):
-    ''' diagnosis_df is assumed to be one-hot encoded, where each diagnosis is in a different column
+    '''
+    Diagnosis_df is assumed to be one-hot encoded, where each diagnosis is in a different column
 	with 0/1 values. This function maps to more general diagnoses which will be created as new
-	columns under the one-hot paradigm, using rules defined in diganosis_categories_mapping. 
+	columns under the one-hot paradigm, using rules defined in diganosis_categories_mapping.
 	If no mapping is found child is assumed to be neurotypical
 
     returns: diagnosis_df, but with additional general category diagnoses filled
@@ -1871,7 +1750,7 @@ def get_general_diagnoses_from_specific_diagnoses(diagnosis_df, diagnosis_catego
 	Example of usage (keys are the more general diagnoses which will be created as new columns
 	 and values tell you how to interpret the columns that represent specific diagnoses)
     general_diagnosis_categories_mapping = {
-        'ASD': {'require_one_of': ['ASD'], 'not': []},   
+        'ASD': {'require_one_of': ['ASD'], 'not': []},
         'ADD/ADHD/OCD': {'require_one_of': ['D1ADHD', 'D1ATTWHY', 'ADD/ADHD', 'OCD', 'ADHD'], 'not': []},
         'Any Delay': {'require_one_of': ['D1SPEDEL', 'D1EXPLAN', 'D1MIXREC', 'D1DELDEV', 'DD', 'ID', 'LD', 'SD', 'Delay'], 'not': []},
         'Unknown non-ASD': {'require_one_of': ['is_non_autism_not_defined'], 'not': ['ASD']}
@@ -1883,15 +1762,15 @@ def get_general_diagnoses_from_specific_diagnoses(diagnosis_df, diagnosis_catego
         general_diagnosis_categories_mapping['ASD']['require_one_of']+\
         general_diagnosis_categories_mapping['ADD/ADHD/OCD']['require_one_of']
     general_diagnoses=general_diagnosis_categories_mapping.keys()+['Neurotypical']
-    
-    
-    df = get_general_diagnoses_from_specific_diagnoses(df, 
+
+
+    df = get_general_diagnoses_from_specific_diagnoses(df,
                                     diagnosis_categories_mapping=general_diagnosis_categories_mapping)
     '''
-    
+
     def check_category_diagnosis(row, cols_to_require, cols_to_forbid):
-        ### Use this function on sub-diagnosis, and see if any in the 
-        ### Category of diagnosis are present
+        # Use this function on sub-diagnosis, and see if any in the
+        # Category of diagnosis are present
         required_col_present = False
         for key in cols_to_require:
             if row[key]!='missing' and row[key]!=0 and row[key]!=False and np.isnan(row[key])==False:
@@ -1912,19 +1791,25 @@ def get_general_diagnoses_from_specific_diagnoses(diagnosis_df, diagnosis_catego
             diagnosis_df[general_diagnosis_col] = [0]*len(diagnosis_df.index)
         else:
             diagnosis_df[general_diagnosis_col] = diagnosis_df[cols_to_consier].apply(check_category_diagnosis, args=(cols_to_require, cols_to_forbid), axis=1)
+
     diagnosis_categories = diagnosis_categories_mapping.keys()
     diagnosis_df['some_problem_present'] = diagnosis_df[diagnosis_categories].apply(check_category_diagnosis, args=(diagnosis_categories, []), axis=1)
     swap_zeros_and_ones = lambda x: 1 if x == 0 else 0
     diagnosis_df['Neurotypical'] = diagnosis_df['some_problem_present'].apply(swap_zeros_and_ones)
+
     return diagnosis_df
 
+
 def get_value_fractions_of_total_in_column(dataset, input_column, values_to_consider, bin_by_column=None):
-    ''' Given an input column (first used with diagnoses), a list of which values to consider in that column,
-    and an optional column by which to bin (for example, age_categroy), determine the total fraction of each value in each bin '''
+    '''
+    Given an input column (first used with diagnoses), a list of which values to consider in that column,
+    and an optional column by which to bin (for example, age_categroy), determine the total fraction of each value in each bin
+    '''
     if bin_by_column is None:
         unique_bins = ['all_one_bin']
     else:
         unique_bins = np.unique(dataset[bin_by_column].values)
+
     list_of_rows = []
     for this_bin in unique_bins:
         if this_bin == 'all_one_bin':
@@ -1944,7 +1829,7 @@ def get_value_fractions_of_total_in_column(dataset, input_column, values_to_cons
 
 def get_desired_condition_fracs(app_frac_df, training_set_df, non_target_cols, unknown_non_target_col,
         assumed_unknown_non_target_fracs, target_frac=0.5, reg_param=0.5, target_key='ASD', debug_level=0):
-    ''' 
+    '''
 	This function is needed to determine the various non-ASD condition breakdowns for purposes of
 	balancing them before training
 
@@ -1966,7 +1851,7 @@ def get_desired_condition_fracs(app_frac_df, training_set_df, non_target_cols, u
     detailed description of the inputs:
         app_frac_df: desired fractions of children with each condition, binned by child age (rows). Conditions are in the columns and entries are the fractions.
         training_set_df: starting fractions of the conditions in the training set. Organized as app_frac_df
-        non_target_cols: a list that specifies which columns of the training_set_df refer to conditions that are spectators to the target condition and which 
+        non_target_cols: a list that specifies which columns of the training_set_df refer to conditions that are spectators to the target condition and which
             must have their fractions determiend
         unknown_non_target_col: Optional. If your training data contains a children of "unknown" conditions (must be sure they do not have target condition),
             specify that column here.
@@ -1981,61 +1866,66 @@ def get_desired_condition_fracs(app_frac_df, training_set_df, non_target_cols, u
     def get_X_y_vals_for_diagnosis_frac_fit(app_frac_vals, unknown_frac_vals, initial_training_fracs, target_frac):
         ''' This reformats inputs into the matrices that need to be
         passed to the ridge regression, with proper sklearn format '''
-        ####################
-        ### Example X-matrix for 3 non-autism categories should look like this:
-        ### 
-        ###    1.    0.    0.    f1_unknown
-        ###    0.    1.    0.    f2_unknown
-        ###    0.    0.    1.    f3_unknown
-        ###    1.    1.    1.       1.
-        ##### The fX_unknowns are fractions of the total non-autistic sample in the desired output
-        ##### (total including autism after autism frac is set to target_frac)
+        ########
+        # Example X-matrix for 3 non-autism categories should look like this:
+        #
+        #    1.    0.    0.    f1_unknown
+        #    0.    1.    0.    f2_unknown
+        #    0.    0.    1.    f3_unknown
+        #    1.    1.    1.       1.
+        ### The fX_unknowns are fractions of the total non-autistic sample in the desired output
+        ### (total including autism after autism frac is set to target_frac)
         ##
         ## initial_training_fracs are used as offsets to make it so that regularization will constrain to change
         ## results as little as possible from default fractions
-        ### Example y_vals looks like this:
-        ###    f1_App - f1_train_initial, f2_App-f2_train_initial, f3_App-f3_train_initial, (1-f_autism-sum(f trains))   (but vertical rather than horizontal)
-        ####################
-    
-        y_vals = list(app_frac_vals-initial_training_fracs) + [1. - target_frac - np.sum(initial_training_fracs)]    ### represents the constraint that all non-target + target adds to a total fraction of 1.0
+        # Example y_vals looks like this:
+        #    f1_App - f1_train_initial, f2_App-f2_train_initial, f3_App-f3_train_initial, (1-f_autism-sum(f trains))   (but vertical rather than horizontal)
+        ########
+
+        # represents the constraint that all non-target + target adds to a total fraction of 1.0
+        y_vals = list(app_frac_vals-initial_training_fracs) + [1. - target_frac - np.sum(initial_training_fracs)]
         assert abs(np.sum(y_vals) + (2.*np.sum(initial_training_fracs))  - 1.) < 0.00001
         y_arr = np.array(y_vals).reshape(len(app_frac_vals)+1, 1)
-    
+
         my_X_list = []
         for irow, row in enumerate(range(len(app_frac_vals))):
             build_this_row = [0.]*(irow) + [1.] + [0.]*(len(app_frac_vals)-(irow+1))
-            ### Also append the unknown part for this dimension
+            # Also append the unknown part for this dimension
             build_this_row.append(unknown_frac_vals[irow])
             my_X_list.append(build_this_row)
         my_X_list.append([1.]*(len(app_frac_vals)+1))
         X_arr = np.array(my_X_list)
+
         return X_arr, y_arr
 
     def get_tot_frac_non_target(in_df, non_target_cols):
-        ''' Helper function assumes that in_df has non_target_cols filled with 
+        ''' Helper function assumes that in_df has non_target_cols filled with
         values that represent fractions of total that include target '''
         non_target_df = cp.deepcopy(in_df)
         non_target_df = non_target_df.drop(target_key, 1)
         tot_frac_non_target = cp.deepcopy(in_df[non_target_cols[0]])
         for col in non_target_cols[1:]:
             tot_frac_non_target += in_df[col]
+
         return tot_frac_non_target
+
     def enforce_constraints(fracs_dict, target_frac, initial_training_non_target_fracs_dict, max_allowed_weighting=5.):
-        ### first get rid of negatives:
+        # first get rid of negatives:
         for key in fracs_dict.keys():
             if fracs_dict[key] < 0.: fracs_dict[key] = 0.
-        ### Now enforce maximum weighting 
+        # Now enforce maximum weighting
         for key in fracs_dict.keys():
             if key==target_key: continue
             if fracs_dict[key] > max_allowed_weighting*initial_training_non_target_fracs_dict[key]:
                 fracs_dict[key] = max_allowed_weighting*initial_training_non_target_fracs_dict[key]
-        ### Now normalize so that total is 1.0
+        # Now normalize so that total is 1.0
         expected_non_target_total = 1. - target_frac
         actual_non_target_total = np.sum([value for key, value in fracs_dict.iteritems() if key != target_key])
         correction_factor = expected_non_target_total / actual_non_target_total
         for key in fracs_dict.keys():
             if key == target_key: continue
             fracs_dict[key] *= correction_factor
+
         return fracs_dict
 
     age_groups = app_frac_df['age_category'].values
@@ -2043,63 +1933,67 @@ def get_desired_condition_fracs(app_frac_df, training_set_df, non_target_cols, u
     desired_condition_fracs[target_key] = []
     desired_condition_fracs['age_category'] = []
     for age_group in age_groups:
-
-        ### Do linear regression of N+1 equations with N+1 unknowns where the N corresponds to the number of non-autism conditions
-        ### And the +1 represents the unknown category
+        # Do linear regression of N+1 equations with N+1 unknowns where the N corresponds to the number of non-autism conditions
+        # And the +1 represents the unknown category
         app_non_target_app_frac_vals = np.array([app_frac_df[app_frac_df['age_category']==age_group][non_target_condition].values[0] for non_target_condition in non_target_cols])
         desired_non_target_fraction = 1. - target_frac
         desired_non_target_frac_vals = app_non_target_app_frac_vals * (desired_non_target_fraction / np.sum(app_non_target_app_frac_vals))
+
         if len(training_set_df[training_set_df['age_category']==age_group].index)==0:
-            print 'No data available for ', age_group
+            logger.info("No data available for %d" % age_group)
             continue
+
         training_non_target_frac_vals = np.array([training_set_df[training_set_df['age_category']==age_group][non_target_condition].values[0] for non_target_condition in non_target_cols])
         unknown_frac_vals = [assumed_unknown_non_target_fracs[assumed_unknown_non_target_fracs['age_category']==age_group][non_target_condition].values[0] for non_target_condition in non_target_cols]
         X_arr, y_arr = get_X_y_vals_for_diagnosis_frac_fit(desired_non_target_frac_vals, unknown_frac_vals, initial_training_fracs=training_non_target_frac_vals, target_frac=target_frac)
 
-        #### Now do ridge regression
+        # Now do ridge regression
         if debug_level>=2:
-            print 'age_group: ', age_group, ', do fit on: '
-            print 'X: ', X_arr
-            print 'y: ', y_arr
+            logger.debug("age_group: %s, do fit on: " % str(age_group))
+            logger.debug("X: %s" % str(X_arr))
+            logger.debug("y: %s" % str(y_arr))
+
         reg = linear_model.Ridge(alpha=reg_param, fit_intercept=False)
         fit_output = reg.fit(X_arr, y_arr)
-        if debug_level>=2:
-            print 'fit intercept: ', fit_output.intercept_
-            print 'fit parameters: ', fit_output.coef_
-            print 'initial training offsets were: ', training_non_target_frac_vals
-            print '(Need to add those back in to get real app values)'
 
-        ### Now undo the centering of the fit parameters around the initial values
+        if debug_level>=2:
+            logger.debug("fit intercept: %s" % str(fit_output.intercept_))
+            logger.debug("fit parameters: %s" % str(fit_output.coef_))
+            logger.debug("initial training offsets were: %s" % str(training_non_target_frac_vals))
+            logger.debug("(Need to add those back in to get real app values)")
+
+        # Now undo the centering of the fit parameters around the initial values
         output_fracs_dict = {}
         for idx, (non_target_condition, frac) in enumerate(zip(non_target_cols+[unknown_non_target_col], fit_output.coef_[0])):
             if non_target_condition != unknown_non_target_col: frac += training_non_target_frac_vals[idx]
             output_fracs_dict[non_target_condition] = frac
         output_fracs_dict[target_key] = target_frac
 
-        ### Now enforce reasonable constraints on output weighting
+        # Now enforce reasonable constraints on output weighting
         if debug_level>=2:
-            print 'Raw output_fracs before enforcement of constraints: ', output_fracs_dict
+            logger.debug("Raw output_fracs before enforcement of constraints: " % str(output_fracs_dict))
+
         initial_training_non_target_fracs_dict = {condition: frac for condition, frac in zip(non_target_cols, training_non_target_frac_vals)}
         initial_training_non_target_fracs_dict[unknown_non_target_col] = training_set_df[training_set_df['age_category']==age_group][unknown_non_target_col].values[0]
         output_fracs_dict = enforce_constraints(output_fracs_dict, target_frac, initial_training_non_target_fracs_dict)
+
         if debug_level>=2:
-            print 'output_fracs_ after enforcement of constraints: ', output_fracs_dict
+            logger.debug("output_fracs_ after enforcement of constraints: %s" % str(output_fracs_dict))
+
         assert abs(np.sum(output_fracs_dict.values()) - 1.) < 0.00001
         for condition, frac in output_fracs_dict.iteritems():
             desired_condition_fracs[condition].append(output_fracs_dict[condition])
         desired_condition_fracs['age_category'].append(age_group)
+
     desired_fracs_df = pd.DataFrame(desired_condition_fracs)
+
     if debug_level>=1:
-        debug_cols = ['age_category', target_key]+non_target_cols 
-        print 'Show results for: '
-        print 'target column: ', target_key
-        print 'input training fracs: ', training_set_df[debug_cols+[unknown_non_target_col]]
-        print 'desired App Fracs: ', app_frac_df[debug_cols]
-        print 'assumed unknown composition: ', assumed_unknown_non_target_fracs[['age_category']+non_target_cols]
-        print 'And the results are: ', desired_fracs_df[debug_cols+[unknown_non_target_col]]
+        debug_cols = ['age_category', target_key]+non_target_cols
+        logger.debug("Show results for: ")
+        logger.debug("target column: %d" % target_key)
+        logger.debug("input training fracs: %s" % str(training_set_df[debug_cols+[unknown_non_target_col]]))
+        logger.debug("desired App Fracs: %s" % str(app_frac_df[debug_cols]))
+        logger.debug("assumed unknown composition: %s" % str(assumed_unknown_non_target_fracs[["age_category"]+non_target_cols]))
+        logger.debug("And the results are: %s" % str(desired_fracs_df[debug_cols+[unknown_non_target_col]]))
+
     return desired_fracs_df
-
-
-
-    
-
