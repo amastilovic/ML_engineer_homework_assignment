@@ -6,7 +6,8 @@ from scipy.sparse import coo_matrix
 #### 0.17 does not support sample_weights, so this can be deprecated
 #### Once we upgrade versions
 def confusion_matrix_0p18(y_true, y_pred, labels=None, sample_weight=None):
-    """Compute confusion matrix to evaluate the accuracy of a classification
+    """
+    Compute confusion matrix to evaluate the accuracy of a classification
     By definition a confusion matrix :math:`C` is such that :math:`C_{i, j}`
     is equal to the number of observations known to be in group :math:`i` but
     predicted to be in group :math:`j`.
@@ -54,82 +55,14 @@ def confusion_matrix_0p18(y_true, y_pred, labels=None, sample_weight=None):
            [1, 0, 2]])
     """
 
-    ######### Attempt at getting sklearn's data input check working
-	######### But failed due to too many missing dependencies
-    ##### This is supporting code for getting the confusion matrix with weights.
-    ##### literally copied from the sklearn 0.18 source code
-    ##### 0.17 does not support sample_weights, so this can be deprecated
-    ##### Once we upgrade versions
-    #def _check_targets(y_true, y_pred):
-    #    """Check that y_true and y_pred belong to the same classification task
-    #    This converts multiclass or binary types to a common shape, and raises a
-    #    ValueError for a mix of multilabel and multiclass targets, a mix of
-    #    multilabel formats, for the presence of continuous-valued or multioutput
-    #    targets, or for targets of different lengths.
-    #    Column vectors are squeezed to 1d, while multilabel formats are returned
-    #    as CSR sparse label indicators.
-    #    Parameters
-    #    ----------
-    #    y_true : array-like
-    #    y_pred : array-like
-    #    Returns
-    #    -------
-    #    type_true : one of {'multilabel-indicator', 'multiclass', 'binary'}
-    #        The type of the true target data, as output by
-    #        ``utils.multiclass.type_of_target``
-    #    y_true : array or indicator matrix
-    #    y_pred : array or indicator matrix
-    #    """
-    #    #### check_consistent_length(y_true, y_pred)
-    #    
-    #    type_true = type_of_target(y_true)
-    #    type_pred = type_of_target(y_pred)
-    #
-    #    y_type = set([type_true, type_pred])
-    #    if y_type == set(["binary", "multiclass"]):
-    #        y_type = set(["multiclass"])
-    #
-    #    if len(y_type) > 1:
-    #        raise ValueError("Can't handle mix of {0} and {1}"
-    #                         "".format(type_true, type_pred))
-    #
-    #    # We can't have more than one value on y_type => The set is no more needed
-    #    y_type = y_type.pop()
-    #
-    #    # No metrics support "multiclass-multioutput" format
-    #    if (y_type not in ["binary", "multiclass", "multilabel-indicator"]):
-    #        raise ValueError("{0} is not supported".format(y_type))
-    #
-    #    if y_type in ["binary", "multiclass"]:
-    #        y_true = column_or_1d(y_true)
-    #        y_pred = column_or_1d(y_pred)
-    #
-    #    if y_type.startswith('multilabel'):
-    #        y_true = csr_matrix(y_true)
-    #        y_pred = csr_matrix(y_pred)
-    #        y_type = 'multilabel-indicator'
-    #
-    #    return y_type, y_true, y_pred
-
     assert sample_weight is None or len(sample_weight) == len(y_true)
     assert len(y_true) == len(y_pred)
-#    y_type, y_true, y_pred = _check_targets(y_true, y_pred)
-#    if y_type not in ("binary", "multiclass"):
-#        raise ValueError("%s is not supported" % y_type)
 
-#    print 'labels: ', labels
-#    print 'type: ', type(labels)
-#    print 'y_true: ', y_true
     if labels is None:
         labels = unique_labels(y_true, y_pred)
     else:
-#        print 'labels: ', labels
-#        print 'type: ', type(labels)
-#        print 'labels.values: ', labels.values
         try:
-#            print 'y_true: ', y_true, ', type: ', type(y_true)
             y_true = y_true.values
-#            print 'converted to an array'
         except:
             ### Was not a pandas series
             pass
