@@ -1,0 +1,166 @@
+import pandas as pd
+import collections
+
+
+KEY_V1       = "v1_key"
+KEY_V2       = "v2_key"
+KEY_DETAILS  = "details_of_question_or_answer_changes"
+KEY_V1_TO_V2 = "v1_to_v2_answer_mapping"
+KEY_V2_TO_V1 = "v2_to_v1_answer_mapping"
+
+
+
+ADOS_v1_vs_v2_mapping_df = pd.DataFrame([
+    {KEY_V1: "ados1_a1", KEY_V2: "ados1_a1", KEY_DETAILS: "mapping of answer, plus minor clarifications, probably not a big deal",
+        KEY_V1_TO_V2: {"8": "4"}, KEY_V2_TO_V1: {"4": "8"}},
+    {KEY_V1: "ados1_a2", KEY_V2: "ados1_a2", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados1_a3", KEY_V2: "ados1_a3", KEY_DETAILS: "Medium clarifications"},
+    {KEY_V1: "ados1_a4", KEY_V2: "ados1_a4", KEY_DETAILS: "Medium clarifications"},
+    {KEY_V1: "ados1_a5", KEY_V2: "ados1_a5", KEY_DETAILS: "Medium clarifications"},
+    {KEY_V1: "ados1_a6", KEY_V2: "ados1_a6", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados1_a7", KEY_V2: "ados1_a7", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados1_a8", KEY_V2: "ados1_a8", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados1_b1", KEY_V2: "ados1_b1", KEY_DETAILS: "Trivial clarifications"},
+    {KEY_V1: "ados1_b2", KEY_V2: "ados1_b2", KEY_DETAILS: "Trivial clarifications"},
+    {KEY_V1: "ados1_b3", KEY_V2: "ados1_b3", KEY_DETAILS: "Answer 2 minor change in meaning"},
+    {KEY_V1: "ados1_b4", KEY_V2: "ados1_b4", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados1_b5", KEY_V2: "ados1_b5", KEY_DETAILS: "Splitting of answer plus minor clarifications",
+        KEY_V1_TO_V2: {"2": ["2","3"]}, KEY_V2_TO_V1: {"3": "2"}},
+    {KEY_V1: "ados1_b6", KEY_V2: "ados1_b6", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados1_b7", KEY_V2: "ados1_b7", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados1_b8", KEY_V2: "ados1_b8", KEY_DETAILS: "Minor change in meaning of response 1, minor clarifications"},
+    {KEY_V1: "ados1_b9", KEY_V2: "ados1_b9", KEY_DETAILS: ""},
+    {KEY_V1: "ados1_b10", KEY_V2: "ados1_b10", KEY_DETAILS: ""},
+    {KEY_V1: "ados1_b11", KEY_V2: "ados1_b11", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados1_b12", KEY_V2: "ados1_b12", KEY_DETAILS: "Trivial clarifications"},
+    {KEY_V1: None, KEY_V2: "ados1_b13a"},
+    {KEY_V1: None, KEY_V2: "ados1_b13b"},
+    {KEY_V1: None, KEY_V2: "ados1_b14"},
+    {KEY_V1: None, KEY_V2: "ados1_b15"},
+    {KEY_V1: None, KEY_V2: "ados1_b16"},
+    {KEY_V1: "ados1_c1", KEY_V2: "ados1_c1", KEY_DETAILS: "Trivial clarifications"},
+    {KEY_V1: "ados1_c2", KEY_V2: "ados1_c2", KEY_DETAILS: "Trivial clarifications"},
+    #### d1 <=> d4 same topics in v1 versus v2 except that in v2 weird reactions to sights/smells would go into d4, while in v1 it would
+    ######## go into d1
+    {KEY_V1: "ados1_d1", KEY_V2: "ados1_d1", KEY_DETAILS: "New answer code and significant clarifications",
+        KEY_V1_TO_V2: {"2": ["2","3"]}, KEY_V2_TO_V1: {"3": "2"}},
+    {KEY_V1: "ados1_d2", KEY_V2: "ados1_d2", KEY_DETAILS: "New answer code and significant clarifications",
+        KEY_V1_TO_V2: {"2": ["2","3"]}, KEY_V2_TO_V1: {"3": "2"}},
+    {KEY_V1: "ados1_d3", KEY_V2: "ados1_d3", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados1_d4", KEY_V2: "ados1_d4", KEY_DETAILS: "Major clarification, taking material from what used to be d1"},
+    {KEY_V1: "ados1_e1", KEY_V2: "ados1_e1", KEY_DETAILS: "Answer remapping and minor clarifications",
+        KEY_V1_TO_V2: {"1": ["1","2"], "2": "3"}, KEY_V2_TO_V1: {"2": "1", "3": "2"}},
+    {KEY_V1: "ados1_e2", KEY_V2: "ados1_e2", KEY_DETAILS: "Answer remapping and minor clarifications",
+        KEY_V1_TO_V2: {"1": ["1","2"], "2": ["2","3"]}, KEY_V2_TO_V1: {"2": ["1", "2"], "3": "2"} },
+    {KEY_V1: "ados1_e3", KEY_V2: "ados1_e3", KEY_DETAILS: "Minor clarifications"},
+
+
+    {KEY_V1: "ados2_a1", KEY_V2: "ados2_a1", KEY_DETAILS: "mapping of answer, plus minor clarifications, probably not a big deal",
+        KEY_V1_TO_V2: {"7": "3"}, KEY_V2_TO_V1: {"3": ["3", "7"]}},
+    {KEY_V1: "ados2_a2", KEY_V2: None},
+    {KEY_V1: "ados2_a3", KEY_V2: "ados2_a2", KEY_DETAILS: "Trivial clarifications"},
+    {KEY_V1: "ados2_a4", KEY_V2: "ados2_a3", KEY_DETAILS: "Medium clarifications"},
+    {KEY_V1: "ados2_a5", KEY_V2: "ados2_a4", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados2_a6", KEY_V2: "ados2_a5", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados2_a7", KEY_V2: "ados2_a6", KEY_DETAILS: "Medium clarifications"},
+    {KEY_V1: "ados2_a8", KEY_V2: "ados2_a7", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados2_b1", KEY_V2: "ados2_b1", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados2_b2", KEY_V2: "ados2_b2", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados2_b3", KEY_V2: "ados2_b3", KEY_DETAILS: "Significant rephrasing of responses",
+        KEY_V1_TO_V2: {"2": ["2","3"], "8": None}, KEY_V2_TO_V1: {"3": "2"}},
+    {KEY_V1: "ados2_b4", KEY_V2: "ados2_b4", KEY_DETAILS: "Significant clarifications, and minor tightening of criteria"},
+    {KEY_V1: "ados2_b5", KEY_V2: "ados2_b5", KEY_DETAILS: ""},
+    {KEY_V1: "ados2_b6", KEY_V2: "ados2_b6", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados2_b7", KEY_V2: "ados2_b7", KEY_DETAILS: "Medium rephrasing"},
+    {KEY_V1: "ados2_b8", KEY_V2: "ados2_b8", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: None, KEY_V2: "ados2_b9a", },
+    {KEY_V1: None, KEY_V2: "ados2_b9b", },
+    {KEY_V1: "ados2_b9", KEY_V2: "ados2_b10", KEY_DETAILS: ""},
+    {KEY_V1: "ados2_b10", KEY_V2: "ados2_b11", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados2_b11", KEY_V2: "ados2_b12", KEY_DETAILS: ""},
+    {KEY_V1: "ados2_c1", KEY_V2: "ados2_c1", KEY_DETAILS: "Minor clarifications"},
+    {KEY_V1: "ados2_c2", KEY_V2: "ados2_c2", KEY_DETAILS: ""},
+    {KEY_V1: "ados2_d1", KEY_V2: "ados2_d1", KEY_DETAILS: "New answer code and significant clarifications",
+        KEY_V1_TO_V2: {"2": ["2","3"]}, KEY_V2_TO_V1: {"3": "2"}},
+    {KEY_V1: "ados2_d2", KEY_V2: "ados2_d2", KEY_DETAILS: "New answer code and significant clarifications",
+        KEY_V1_TO_V2: {"2": ["2","3"]}, KEY_V2_TO_V1: {"3": "2"}},
+    {KEY_V1: "ados2_d3", KEY_V2: "ados2_d3", KEY_DETAILS: "Medium clarifications"},
+    {KEY_V1: "ados2_d4", KEY_V2: "ados2_d4", KEY_DETAILS: "Major clarification, taking material from what used to be d1"},
+    {KEY_V1: "ados2_e1", KEY_V2: "ados2_e1", KEY_DETAILS: "Answer remapping and minor clarifications",
+        KEY_V1_TO_V2: {"1": ["1","2"], "2": "3"}, KEY_V2_TO_V1: {"2": "1", "3": "2"}},
+    {KEY_V1: "ados2_e2", KEY_V2: "ados2_e2", KEY_DETAILS: "Answer remapping and minor clarifications",
+        KEY_V1_TO_V2: {"1": ["1","2"], "2": ["2","3"]}, KEY_V2_TO_V1: {"2": ["1", "2"], "3": "2"} },
+    {KEY_V1: "ados2_e3", KEY_V2: "ados2_e3", KEY_DETAILS: "Minor clarifications"},
+])
+
+
+VALID_Qs_AND_As = {
+    'ADOS1': collections.OrderedDict([
+        ('ados1_a1', [0, 1, 2, 3, 8]),
+        ('ados1_a2', [0, 1, 2, 3]),
+        ('ados1_a3', [0, 1, 2, 8]),
+        ('ados1_a4', [0, 1, 2, 3, 8]),
+        ('ados1_a5', [0, 1, 2, 3, 8]),
+        ('ados1_a6', [0, 1, 2, 8]),
+        ('ados1_a7', [0, 1, 2, 3]),
+        ('ados1_a8', [0, 1, 2, 8]),
+        ('ados1_b1', [0, 2]),
+        ('ados1_b2', [0, 1, 2, 3]),
+        ('ados1_b3', [0, 1, 2]),
+        ('ados1_b4', [0, 1, 2, 3]),
+        ('ados1_b5', [0, 1, 2]),
+        ('ados1_b6', [0, 1, 2, 3]),
+        ('ados1_b7', [0, 1, 2, 3]),
+        ('ados1_b8', [0, 1, 2]),
+        ('ados1_b9', [0, 1, 2]),
+        ('ados1_b10', [0, 1, 2]),
+        ('ados1_b11', [0, 1, 2, 3]),
+        ('ados1_b12', [0, 1, 2, 3]),
+        ('ados1_c1', [0, 1, 2, 3]),
+        ('ados1_c2', [0, 1, 2, 3]),
+        ('ados1_d1', [0, 1, 2]),
+        ('ados1_d2', [0, 1, 2]),
+        ('ados1_d3', [0, 1, 2]),
+        ('ados1_d4', [0, 1, 2, 3]),
+        ('ados1_e1', [0, 1, 2, 7]),
+        ('ados1_e2', [0, 1, 2]),
+        ('ados1_e3', [0, 1, 2]),
+        ]
+    ),
+    'ADOS2': collections.OrderedDict([
+        ('ados2_a1', [0, 1, 2, 3, 7]),
+        ('ados2_a2', [0, 1, 2, 7]),
+        ('ados2_a3', [0, 1, 2, 7, 8]),
+        ('ados2_a4', [0, 1, 2, 3]),
+        ('ados2_a5', [0, 1, 2, 3]),
+        ('ados2_a6', [0, 1, 2, 3]),
+        ('ados2_a7', [0, 1, 2, 3]),
+        ('ados2_a8', [0, 1, 2, 3, 8]),
+
+        ('ados2_b1', [0, 2 ]),
+        ('ados2_b2', [0, 1, 2 ]),
+        ('ados2_b3', [0, 1, 2, 8 ]),
+        ('ados2_b4', [0, 1, 2, 3 ]),
+        ('ados2_b5', [0, 1, 2 ]),
+        ('ados2_b6', [0, 1, 2 ]),
+        ('ados2_b7', [0, 1, 2, 3 ]),
+        ('ados2_b8', [0, 1, 2, 3 ]),
+        ('ados2_b9', [0, 1, 2, 3 ]),
+        ('ados2_b10', [0, 1, 2, 3 ]),
+        ('ados2_b11', [0, 1, 2, 3 ]),
+
+        ('ados2_c1', [0, 1, 2, 3 ]),
+        ('ados2_c2', [0, 1, 2, 3 ]),
+
+        ('ados2_d1', [0, 1, 2 ]),
+        ('ados2_d2', [0, 1, 2 ]),
+        ('ados2_d3', [0, 1, 2 ]),
+        ('ados2_d4', [0, 1, 2, 3 ]),
+
+        ('ados2_e1', [0, 1, 2, 7 ]),
+        ('ados2_e2', [0, 1, 2 ]),
+        ('ados2_e3', [0, 1, 2 ]),
+
+        ]
+    )
+}
