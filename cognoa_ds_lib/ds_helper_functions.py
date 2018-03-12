@@ -688,8 +688,11 @@ def get_classifier_performance_metrics(class_names, class_priors, labels, predic
 
     return output
 
-#pretty printing of outputs that you got by calling get_multi_classifier_performance_metrics
+
 def print_classifier_performance_metrics(class_names, metrics):
+    '''
+    Pretty printing of outputs that you got by calling get_multi_classifier_performance_metrics
+    '''
 
     print("\n\nDATASET PROFILE:\n\n")
 
