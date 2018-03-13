@@ -5,6 +5,10 @@ import pandas as pd
 import random
 import ds_helper_functions
 
+from constants import *
+
+
+OALL_METS = 'overall_metrics'
 
 def get_inconclusive_model(reliability_column,
                            reliability_cutoff,
@@ -22,6 +26,8 @@ def get_inconclusive_model(reliability_column,
     reliability_outcome_class_priors = [(1.0/2.0), (1.0/2.0)]
     reliability_dunno_range = None
     reliability_outcome_classes = ['reliable', 'not']
+
+    sasha = mastilovic
 
     # Separate fit to determine reliability
     reliability_model, reliability_features, reliability_y_predicted_without_dunno, reliability_y_predicted_with_dunno, reliability_y_predicted_probs =\
@@ -173,16 +179,28 @@ def run_inconclusive_model_pseudo_experiments(n_expts,
               verbose=False)
 
         print 'On experiment, ', iexpt, ', get reliability model'
-        reliability_model, reliable_dataset, encoded_reliability_features = get_inconclusive_model(reliability_column='XValid_matches',
-                reliability_cutoff=reliability_cutoff, dataset=reliability_df, feature_columns=feature_columns,
-                feature_encoding_map=feature_encoding_map, target_column=reliability_outcome_column,
-                model_function=cp.deepcopy(base_reliability_model), sample_weights=reliability_sample_weights,
-                **reliability_model_args_dict)
-        n_predicted_reliable = len([ele for ele in reliability_df['predicted_reliable'].values if ele=='reliable'])
-        n_predicted_not = len([ele for ele in reliability_df['predicted_reliable'].values if ele=='not'])
-        n_Xvalid_correct = len([ele for ele in reliability_df['XValid_matches'].values if ele=='reliable'])
-        n_Xvalid_incorrect = len([ele for ele in reliability_df['XValid_matches'].values if ele=='not'])
+        reliability_model, reliable_dataset, encoded_reliability_features = get_inconclusive_model(
+            reliability_column='XValid_matches',
+            reliability_cutoff=reliability_cutoff,
+            dataset=reliability_df,
+            feature_columns=feature_columns,
+            feature_encoding_map=feature_encoding_map,
+            target_column=reliability_outcome_column,
+            model_function=cp.deepcopy(base_reliability_model),
+            sample_weights=reliability_sample_weights,
+            **reliability_model_args_dict)
+
+        def select(rel_df, col, filt):
+            return [ele for ele in rel_df[col].values if ele==filt]
+
+        n_predicted_reliable = len(select(reliability_df, 'predicted_reliable', 'reliable'))
+        n_predicted_not = len(select(reliability_df, 'predicted_reliable', 'not'))
+
+        n_Xvalid_correct = len(select(reliability_df, 'XValid_matches', 'reliable'))
+        n_Xvalid_incorrect = len(select(reliability_df, 'XValid_matches', 'not'))
+
         reliability_coverage = float(n_predicted_reliable) / float(n_predicted_reliable + n_predicted_not)
+
         if verbose:
             print 'n_predicted_reliable: ', n_predicted_reliable
             print 'n_predicted_not: ', n_predicted_not
@@ -202,25 +220,36 @@ def run_inconclusive_model_pseudo_experiments(n_expts,
         X_validate,y_validate,encoded_features_validate = ds_helper_functions.prepare_data_for_modeling(validation_df,
                                     feature_columns, feature_encoding_map, 'outcome', force_encoded_features=encoded_reliability_features)
 
+        rel_prob_s = 'reliability_prob'
+        rel_pred_s = 'reliability_prediction'
 
-        validation_df['reliability_prob'] = [ele[1] for ele in reliability_model.predict_proba(X_validate)]
-        validation_df['reliability_prediction'] = ['reliable' if ele>reliability_cutoff else 'not' for ele in validation_df['reliability_prob'].values]
+        validation_df[rel_prob_s] = [ele[1] for ele in reliability_model.predict_proba(X_validate)]
+        validation_df[rel_pred_s] = ['reliable' if ele>reliability_cutoff else 'not' for ele in validation_df[rel_prob_s].values]
 
-        restricted_validation_df = validation_df[validation_df['reliability_prediction']=='reliable']
+        restricted_validation_df = validation_df[validation_df[rel_pred_s]=='reliable']
+
         restricted_validation_sample_weights = validation_sample_weights[validation_sample_weights.index.isin(restricted_validation_df.index)]
-        restricted_validation_output = ds_helper_functions.cross_validate_model(restricted_validation_df, restricted_validation_sample_weights,
-                                feature_columns, feature_encoding_map, outcome_column, None, n_folds,
-                                outcome_classes, outcome_class_priors, cp.deepcopy(base_model), **base_model_args_dict)
+        restricted_validation_output = ds_helper_functions.cross_validate_model(restricted_validation_df,
+                                                                                restricted_validation_sample_weights,
+                                                                                feature_columns,
+                                                                                feature_encoding_map,
+                                                                                outcome_column,
+                                                                                None,
+                                                                                n_folds,
+                                                                                outcome_classes,
+                                                                                outcome_class_priors,
+                                                                                cp.deepcopy(base_model),
+                                                                                **base_model_args_dict)
 
         if verbose:
             print 'For expt ', iexpt, ', X-validation performance with no reliability restriction is:'
-            print_classifier_performance_metrics(outcome_classes, validation_output['overall_metrics'])
+            print_classifier_performance_metrics(outcome_classes, validation_output[OALL_METS])
             print 'For expt ', iexpt, ', X-validation performance with reliability restriction is:'
-            print_classifier_performance_metrics(outcome_classes, restricted_validation_output['overall_metrics'])
+            print_classifier_performance_metrics(outcome_classes, restricted_validation_output[OALL_METS])
 
         if iexpt == 0:
-            print 'validation output: ', validation_output['overall_metrics']
-            confusion_matrix = validation_output['overall_metrics']['with_dunno']['dataset_confusion']
+            print 'validation output: ', validation_output[OALL_METS]
+            confusion_matrix = validation_output[OALL_METS][KEY_WITH_DUNNO]['dataset_confusion']
             print 'Dunno confusion matrix: ', confusion_matrix
             print 'Value at 0, 2: ', confusion_matrix[0,2]
 
@@ -242,10 +271,12 @@ def run_inconclusive_model_pseudo_experiments(n_expts,
         results_dict['dunno_coverage'] = dunno_coverage
         results_dict['chained_coverage'] = reliability_coverage
 
-        for outcome_class in outcome_classes:
-            results_dict['default_'+outcome_class+'_recall'] = validation_output['overall_metrics']['without_dunno']['dataset_recall_per_class'][outcome_class]
-            results_dict['chained_'+outcome_class+'_recall'] = restricted_validation_output['overall_metrics']['without_dunno']['dataset_recall_per_class'][outcome_class]
-            results_dict['dunno_'+outcome_class+'_recall'] = validation_output['overall_metrics']['with_dunno']['dataset_recall_per_class'][outcome_class]
+        drpc_str = 'dataset_recall_per_class'
+
+        for outc_cls in outc_clses:
+            results_dict['default_'+outc_cls+'_recall'] = validation_output[OALL_METS][KEY_WITHOUT_DUNNO][drpc_str][outc_cls]
+            results_dict['chained_'+outc_cls+'_recall'] = restricted_validation_output[OALL_METS][KEY_WITHOUT_DUNNO][drpc_str][outc_cls]
+            results_dict['dunno_'+outc_cls+'_recall'] = validation_output[OALL_METS][KEY_WITH_DUNNO][drpc_str][outc_cls]
 
         experiment_results.append(results_dict)
 
@@ -260,9 +291,19 @@ def visualize_experiment_results(experiment_results_df, title, override_columns_
     print 'mean_vals: ', mean_vals
 
     if override_columns_to_visualize is None:
-        ordered_cols = ['default_autism_recall', 'dunno_autism_recall', 'chained_autism_recall', 'default_not_recall', 'dunno_not_recall', 'chained_not_recall', 'dunno_coverage', 'chained_coverage']
+        ordered_cols = [
+            'default_autism_recall',
+            'dunno_autism_recall',
+            'chained_autism_recall',
+            'default_not_recall',
+            'dunno_not_recall',
+            'chained_not_recall',
+            'dunno_coverage',
+            'chained_coverage'
+            ]
     else:
         ordered_cols = override_columns_to_visualize
+
     ordered_mean_vals = mean_vals[ordered_cols]
     print 'ordered_mean_vals: ', ordered_mean_vals
 
