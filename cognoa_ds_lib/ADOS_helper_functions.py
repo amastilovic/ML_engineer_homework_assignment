@@ -8,10 +8,7 @@ import logging
 from ADOS_mappings import *
 
 
-# set up logging
 DEFAULT_LOG_LEVEL = logging.INFO # or logging.DEBUG or logging.WARNING or logging.ERROR
-
-import logging
 
 logger = logging.getLogger()
 handler = logging.StreamHandler()

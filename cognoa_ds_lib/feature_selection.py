@@ -1,10 +1,12 @@
-### This code is optionally used when running training optimization
-### To get information about which features should be added to an
-### existing list of features
-###
-### It handles both running of the tally method of feature selection as well as
-### X-validation comparisons of performances when a single feature from
-### The tally list has been added
+'''
+This code is optionally used when running training optimization
+To get information about which features should be added to an
+existing list of features
+
+It handles both running of the tally method of feature selection as well as
+X-validation comparisons of performances when a single feature from
+The tally list has been added
+'''
 
 import math, random
 import copy as cp
@@ -12,15 +14,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
+import logging
 
-from ds_helper_functions import *
-from constants import *
-
+from cognoa_ds_lib.ds_helper_functions import *
+from cognoa_ds_lib.constants import *
 
 # set up logging
 DEFAULT_LOG_LEVEL = logging.INFO # or logging.DEBUG or logging.WARNING or logging.ERROR
-
-import logging
 
 logger = logging.getLogger()
 handler = logging.StreamHandler()
