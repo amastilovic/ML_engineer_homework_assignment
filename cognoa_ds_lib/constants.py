@@ -1,3 +1,4 @@
+
 FEAT_ADIR_MAX_SEV     = 'adir_max_severity'
 FEAT_ADIR_MIN_SEV     = 'adir_min_severity'
 FEAT_ADIR_SEV_0_CNT   = 'adir_severity_0_count'
@@ -22,3 +23,4 @@ KEY_OUTCOME_CLS       = 'outcome_classes'
 KEY_OUTCOME_CLS_PRIOR = 'outcome_class_priors'
 KEY_YOUNG_SAMPLE      = 'young_sample'
 KEY_WITHOUT_DUNNO     = 'without_dunno'
+KEY_WITH_DUNNO        = 'with_dunno'
