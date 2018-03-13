@@ -12,23 +12,26 @@ import collections
 from sklearn import metrics
 
 
-def _create_analyst_comparison_dataframe(analyst_scoresheet_dataframe,
-                                         questions_to_include_in_comparison,
-                                         analyst_id_column_name,
-                                         reference_analysts,
-                                         exclude_these_analysts,
-                                         subject_id_column_name,
-                                         other_groupby_keys=[],
-                                         prior_analyst_weights_hypothesis_dict=None,
-                                         indeterminate_answer_code=9,
-                                         debug=False):
+ALL_ANALYSTS_EXCEPT = 'all_analysts_except_'
+
+
+def _create_analyst_comparison_df(analyst_scoresheet_df,
+                                  questions_to_include_in_comparison,
+                                  analyst_id_column_name,
+                                  reference_analysts,
+                                  exclude_these_analysts,
+                                  subject_id_column_name,
+                                  other_groupby_keys=[],
+                                  prior_analyst_weights_hypothesis_dict=None,
+                                  indeterminate_answer_code=9,
+                                  debug=False):
     '''
     This is the main API endpoint to convert an input dataframe into a format
     convenient for analysis by the other API in this lib.
 
     Parameters
     -------
-    analyst_scoresheet_dataframe : pandas.DataFrame
+    analyst_scoresheet_df : pandas.DataFrame
        input dataframe, expected to contain one unique (submission, analyst) per row, and multiple columns, one per question,
        containing question answers in the proper encoding
 
@@ -44,7 +47,7 @@ def _create_analyst_comparison_dataframe(analyst_scoresheet_dataframe,
 
     Returns
     -------
-    analyst_comparison_dataframe : pandas.DataFrame
+    analyst_comparison_df : pandas.DataFrame
         converted data frame
     '''
 
@@ -179,9 +182,9 @@ def _create_analyst_comparison_dataframe(analyst_scoresheet_dataframe,
         return reliability_analysis_df
 
     if exclude_these_analysts == []:
-       analysis_df = cp.deepcopy(analyst_scoresheet_dataframe)
+       analysis_df = cp.deepcopy(analyst_scoresheet_df)
     else:
-       analysis_df = analyst_scoresheet_dataframe[~analyst_scoresheet_dataframe[analyst_id_column_name].isin(exclude_these_analysts)]
+       analysis_df = analyst_scoresheet_df[~analyst_scoresheet_df[analyst_id_column_name].isin(exclude_these_analysts)]
 
     analysis_df[analyst_id_column_name] = analysis_df[analyst_id_column_name].apply(_enforce_analyst_naming_convention)
     all_analyst_names = np.array([name for name in np.unique(analysis_df[analyst_id_column_name].values) if name.startswith('analyst_')])
@@ -207,7 +210,7 @@ def _create_analyst_comparison_dataframe(analyst_scoresheet_dataframe,
     if debug:
         print 'Now convert data frame to format for reliability analysis'
 
-    analyst_comparison_dataframe = _convert_df_from_questions_in_columns_to_rows(reliability_analysis_df,
+    analyst_comparison_df = _convert_df_from_questions_in_columns_to_rows(reliability_analysis_df,
                                                                                  questions_to_include=questions_to_include_in_comparison,
                                                                                  subject_id_column_name=subject_id_column_name,
                                                                                  analyst_id_column_name=analyst_id_column_name,
@@ -215,9 +218,9 @@ def _create_analyst_comparison_dataframe(analyst_scoresheet_dataframe,
 
     # add determinate answer info as boolean columns, one per analyst
     for analyst in all_analyst_names:
-        analyst_comparison_dataframe['determinate_answer_by_'+analyst] = np.where(analyst_comparison_dataframe[analyst]==indeterminate_answer_code, 0, 1)
+        analyst_comparison_df['determinate_answer_by_'+analyst] = np.where(analyst_comparison_df[analyst]==indeterminate_answer_code, 0, 1)
 
-    return analyst_comparison_dataframe
+    return analyst_comparison_df
 
 
 def get_separate_reliabilities_for_all_analysts_and_questions(dataframe,
@@ -344,11 +347,11 @@ def _get_reliabilities_for_given_question(dataframe, calculation_to_do, question
             #HALIM: IF THE separate_reliability_estimate_for_each_analyst is TRUE, AND reference IS NOT THE_OTHER_ANALYSTS ,
             #THEN FILTER dataframe TO EXCLUDE ALL INSTANCES WHERE THE analyst IN QUESTION GAVE AN INDETERMINATE ANSWER
             if (reference_column_name!=THE_OTHER_ANALYSTS and separate_reliability_estimate_for_each_analyst):
-                filtered_dataframe = dataframe[dataframe["determinate_answer_by_"+analyst]==1]
+                filtered_df = dataframe[dataframe["determinate_answer_by_"+analyst]==1]
             else:
-                filtered_dataframe = dataframe.copy(deep=True)
+                filtered_df = dataframe.copy(deep=True)
 
-            reliability = _get_reliability_for_given_analyst_and_question(filtered_dataframe[analyst].values, filtered_dataframe[this_reference_column_name].values,
+            reliability = _get_reliability_for_given_analyst_and_question(filtered_df[analyst].values, filtered_df[this_reference_column_name].values,
                 calculation_to_do, **kwargs)
             reliability_results['analyst'].append(analyst)
             reliability_results['reliability'].append(reliability)
